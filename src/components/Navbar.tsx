@@ -10,7 +10,7 @@ const Navbar = () => {
   // Mock user data - will be replaced with real authentication
   const user = {
     name: "John Doe",
-    role: "Employee", // Employee, HR, Manager, CEO
+    role: "CEO", // Changed to CEO to give admin access
     avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face"
   };
 
