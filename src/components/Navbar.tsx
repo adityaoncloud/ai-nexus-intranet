@@ -2,7 +2,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { User, LogOut, Home, Users, Calendar, FileText } from 'lucide-react';
+import { User, LogOut, Home, Users, Calendar, FileText, Wrench } from 'lucide-react';
 
 const Navbar = () => {
   const location = useLocation();
@@ -20,6 +20,7 @@ const Navbar = () => {
     { path: '/', label: 'Home', icon: Home },
     { path: '/dashboard', label: 'My Dashboard', icon: User },
     { path: '/holidays', label: 'Holidays', icon: Calendar },
+    { path: '/tools', label: 'Internal Tools', icon: Wrench },
   ];
 
   // Add admin routes for HR/Manager/CEO roles

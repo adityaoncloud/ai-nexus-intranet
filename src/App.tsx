@@ -10,6 +10,7 @@ import EmployeeDashboard from "./components/EmployeeDashboard";
 import LoginPage from "./components/LoginPage";
 import AdminPanel from "./components/AdminPanel";
 import EmployeeOnboarding from "./components/EmployeeOnboarding";
+import InternalTools from "./components/InternalTools";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/login" element={<Layout><LoginPage /></Layout>} />
           <Route path="/dashboard" element={<Layout><EmployeeDashboard /></Layout>} />
           <Route path="/holidays" element={<Layout><div className="min-h-screen flex items-center justify-center"><h1 className="text-2xl">Holidays Page - Coming Soon</h1></div></Layout>} />
+          <Route path="/tools" element={<Layout><InternalTools /></Layout>} />
           <Route path="/admin" element={<Layout><AdminPanel /></Layout>} />
           <Route path="/onboarding" element={<Layout><EmployeeOnboarding /></Layout>} />
           <Route path="*" element={<NotFound />} />

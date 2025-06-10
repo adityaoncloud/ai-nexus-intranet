@@ -1,14 +1,14 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, User, FileText, DollarSign, Star, Clock } from 'lucide-react';
+import { Calendar, User, FileText, DollarSign, Star, Clock, Settings } from 'lucide-react';
+import ProfilePictureUpload from './ProfilePictureUpload';
 
 const EmployeeDashboard = () => {
   // Mock employee data
-  const employee = {
+  const [employee, setEmployee] = useState({
     name: "John Doe",
     id: "EMP001",
     email: "john.doe@techcorp.com",
@@ -20,6 +20,10 @@ const EmployeeDashboard = () => {
     totalLeaves: 25,
     usedLeaves: 8,
     pendingLeaves: 2
+  });
+
+  const handleAvatarChange = (newAvatar: string) => {
+    setEmployee(prev => ({ ...prev, avatar: newAvatar }));
   };
 
   const [leaveRequests] = useState([
@@ -118,10 +122,11 @@ const EmployeeDashboard = () => {
 
         {/* Dashboard Tabs */}
         <Tabs defaultValue="leaves" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="leaves">Leave Management</TabsTrigger>
             <TabsTrigger value="reviews">Performance Reviews</TabsTrigger>
             <TabsTrigger value="salary">Salary & Benefits</TabsTrigger>
+            <TabsTrigger value="profile">Profile Settings</TabsTrigger>
           </TabsList>
 
           {/* Leave Management Tab */}
@@ -297,6 +302,46 @@ const EmployeeDashboard = () => {
                       <Badge variant="default">2x Salary</Badge>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Profile Settings Tab */}
+          <TabsContent value="profile">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ProfilePictureUpload 
+                currentAvatar={employee.avatar}
+                onAvatarChange={handleAvatarChange}
+              />
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Settings className="h-5 w-5" />
+                    <span>Account Settings</span>
+                  </CardTitle>
+                  <CardDescription>Manage your account preferences</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Email Notifications</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center space-x-2">
+                        <input type="checkbox" defaultChecked className="rounded" />
+                        <span className="text-sm">Leave request updates</span>
+                      </label>
+                      <label className="flex items-center space-x-2">
+                        <input type="checkbox" defaultChecked className="rounded" />
+                        <span className="text-sm">Performance review notifications</span>
+                      </label>
+                      <label className="flex items-center space-x-2">
+                        <input type="checkbox" className="rounded" />
+                        <span className="text-sm">Company announcements</span>
+                      </label>
+                    </div>
+                  </div>
+                  <Button className="w-full">Save Preferences</Button>
                 </CardContent>
               </Card>
             </div>
