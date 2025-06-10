@@ -1,9 +1,13 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
 import Index from "./pages/Index";
+import EmployeeDashboard from "./components/EmployeeDashboard";
+import LoginPage from "./components/LoginPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -16,7 +20,11 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/login" element={<Layout><LoginPage /></Layout>} />
+          <Route path="/dashboard" element={<Layout><EmployeeDashboard /></Layout>} />
+          <Route path="/holidays" element={<Layout><div className="min-h-screen flex items-center justify-center"><h1 className="text-2xl">Holidays Page - Coming Soon</h1></div></Layout>} />
+          <Route path="/admin" element={<Layout><div className="min-h-screen flex items-center justify-center"><h1 className="text-2xl">Admin Panel - Coming Soon</h1></div></Layout>} />
+          <Route path="/onboarding" element={<Layout><div className="min-h-screen flex items-center justify-center"><h1 className="text-2xl">Onboarding - Coming Soon</h1></div></Layout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
