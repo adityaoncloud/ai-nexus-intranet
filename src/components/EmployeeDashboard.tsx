@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Calendar, User, FileText, DollarSign, Star, Clock, Settings } from 'lucide-react';
 import ProfilePictureUpload from './ProfilePictureUpload';
+import EmployeeCalendar from './EmployeeCalendar';
 
 const EmployeeDashboard = () => {
   // Mock employee data
@@ -122,8 +124,9 @@ const EmployeeDashboard = () => {
 
         {/* Dashboard Tabs */}
         <Tabs defaultValue="leaves" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="leaves">Leave Management</TabsTrigger>
+            <TabsTrigger value="calendar">My Calendar</TabsTrigger>
             <TabsTrigger value="reviews">Performance Reviews</TabsTrigger>
             <TabsTrigger value="salary">Salary & Benefits</TabsTrigger>
             <TabsTrigger value="profile">Profile Settings</TabsTrigger>
@@ -206,6 +209,11 @@ const EmployeeDashboard = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Calendar Tab */}
+          <TabsContent value="calendar">
+            <EmployeeCalendar />
           </TabsContent>
 
           {/* Performance Reviews Tab */}
