@@ -9,10 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Calendar, Clock, User, FileText, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { Calendar, Clock, User, FileText, CheckCircle, XCircle, Plus, Upload, Star } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import ProfilePictureUpload from './ProfilePictureUpload';
 
 const EmployeeDashboard = () => {
   const { user, userProfile } = useAuth();
@@ -35,6 +36,25 @@ const EmployeeDashboard = () => {
         .from('leave_requests')
         .select('*')
         .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id
+  });
+
+  // Fetch user's performance reviews
+  const { data: myReviews } = useQuery({
+    queryKey: ['my-performance-reviews', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('performance_reviews')
+        .select(`
+          *,
+          reviewer:profiles!performance_reviews_reviewer_id_fkey(full_name)
+        `)
+        .eq('employee_id', user?.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -79,6 +99,15 @@ const EmployeeDashboard = () => {
   // Submit leave request mutation
   const submitLeaveRequestMutation = useMutation({
     mutationFn: async (leaveData: any) => {
+      // Validate leave dates
+      const startDate = new Date(leaveData.start_date);
+      const today = new Date();
+      const diffDays = Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+      
+      if (leaveData.leave_type !== 'sick' && diffDays < 5) {
+        throw new Error('Leave requests must be submitted at least 5 days in advance, except for sick leave');
+      }
+
       const { error } = await supabase
         .from('leave_requests')
         .insert({
@@ -98,13 +127,13 @@ const EmployeeDashboard = () => {
       setLeaveFormData({ leave_type: '', start_date: '', end_date: '', reason: '' });
       toast({
         title: "Success",
-        description: "Leave request submitted successfully!"
+        description: "Leave request submitted successfully and notifications sent to management!"
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to submit leave request",
+        description: error.message || "Failed to submit leave request",
         variant: "destructive"
       });
     }
@@ -132,9 +161,32 @@ const EmployeeDashboard = () => {
     }
   });
 
+  // Update avatar mutation
+  const updateAvatarMutation = useMutation({
+    mutationFn: async (avatarUrl: string) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', user?.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      toast({
+        title: "Success",
+        description: "Profile picture updated successfully!"
+      });
+    }
+  });
+
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitLeaveRequestMutation.mutate(leaveFormData);
+  };
+
+  const handleAvatarChange = (newAvatarUrl: string) => {
+    updateAvatarMutation.mutate(newAvatarUrl);
   };
 
   const getStatusBadge = (status: string) => {
@@ -148,6 +200,13 @@ const EmployeeDashboard = () => {
     }
   };
 
+  const getRatingBadge = (rating: number) => {
+    if (rating >= 4.5) return <Badge className="bg-green-500">Excellent</Badge>;
+    if (rating >= 3.5) return <Badge variant="default">Good</Badge>;
+    if (rating >= 2.5) return <Badge variant="secondary">Satisfactory</Badge>;
+    return <Badge variant="destructive">Needs Improvement</Badge>;
+  };
+
   const completedTaskIds = onboardingProgress?.map(p => p.task_id) || [];
   const completionRate = allTasks ? Math.round((completedTaskIds.length / allTasks.length) * 100) : 0;
 
@@ -158,9 +217,9 @@ const EmployeeDashboard = () => {
         <p className="text-muted-foreground">Welcome back, {userProfile?.full_name}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* Profile Summary */}
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <User className="h-5 w-5" />
@@ -168,17 +227,38 @@ const EmployeeDashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p><strong>Name:</strong> {userProfile?.full_name}</p>
-              <p><strong>Email:</strong> {userProfile?.email}</p>
-              <p><strong>Role:</strong> <span className="capitalize">{userProfile?.role}</span></p>
-              <p><strong>Department:</strong> {userProfile?.department || 'Not assigned'}</p>
-              <p><strong>Position:</strong> {userProfile?.position || 'Not assigned'}</p>
-              <p><strong>Join Date:</strong> {userProfile?.join_date ? new Date(userProfile.join_date).toLocaleDateString() : 'Not set'}</p>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-4">
+                <img
+                  src={userProfile?.avatar_url || '/placeholder.svg'}
+                  alt="Profile"
+                  className="w-16 h-16 rounded-full border-4 border-primary/20"
+                />
+                <div>
+                  <h3 className="font-semibold">{userProfile?.full_name}</h3>
+                  <p className="text-sm text-muted-foreground capitalize">{userProfile?.role}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p><strong>Email:</strong> {userProfile?.email}</p>
+                <p><strong>Department:</strong> {userProfile?.department || 'Not assigned'}</p>
+                <p><strong>Position:</strong> {userProfile?.position || 'Not assigned'}</p>
+                <p><strong>Join Date:</strong> {userProfile?.join_date ? new Date(userProfile.join_date).toLocaleDateString() : 'Not set'}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Profile Picture Upload */}
+        <Card className="lg:col-span-2">
+          <ProfilePictureUpload
+            currentAvatar={userProfile?.avatar_url || '/placeholder.svg'}
+            onAvatarChange={handleAvatarChange}
+          />
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Leave Requests */}
         <Card>
           <CardHeader>
@@ -199,7 +279,7 @@ const EmployeeDashboard = () => {
                   <DialogHeader>
                     <DialogTitle>Submit Leave Request</DialogTitle>
                     <DialogDescription>
-                      Fill out the form below to request time off
+                      Fill out the form below to request time off. Leave requests must be submitted at least 5 days in advance (except for sick leave).
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleLeaveSubmit} className="space-y-4">
@@ -276,6 +356,36 @@ const EmployeeDashboard = () => {
               ))}
               {!leaveRequests?.length && (
                 <p className="text-sm text-muted-foreground">No leave requests yet</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Performance Reviews */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Star className="h-5 w-5" />
+              <span>My Performance Reviews</span>
+            </CardTitle>
+            <CardDescription>Latest performance feedback</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {myReviews?.slice(0, 3).map((review) => (
+                <div key={review.id} className="border rounded p-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-medium">Review {review.review_period}</span>
+                    {getRatingBadge(review.rating)}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2">{review.feedback}</p>
+                  <p className="text-xs text-muted-foreground">
+                    By {review.reviewer?.full_name || 'Unknown'} on {new Date(review.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              ))}
+              {!myReviews?.length && (
+                <p className="text-sm text-muted-foreground">No performance reviews yet</p>
               )}
             </div>
           </CardContent>

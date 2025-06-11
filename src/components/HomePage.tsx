@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Users, Calendar, FileText, TrendingUp, Star, ChevronRight } from 'lucide-react';
+import { Users, Calendar, FileText, TrendingUp, Star, ChevronRight, Newspaper } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -57,6 +57,28 @@ const HomePage = () => {
       
       if (error) throw error;
       return data;
+    }
+  });
+
+  // Fetch news (placeholder for future implementation)
+  const { data: news } = useQuery({
+    queryKey: ['company-news'],
+    queryFn: async () => {
+      // This will be implemented later with actual news data
+      return [
+        {
+          id: 1,
+          title: "Company Quarterly Results",
+          excerpt: "We exceeded our Q2 targets by 15%...",
+          date: "2024-06-10"
+        },
+        {
+          id: 2,
+          title: "New Partnership Announcement",
+          excerpt: "Strategic partnership with Tech Leaders Inc...",
+          date: "2024-06-08"
+        }
+      ];
     }
   });
 
@@ -133,7 +155,7 @@ const HomePage = () => {
           })}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* CEO Updates */}
           <Card>
             <CardHeader>
@@ -219,6 +241,35 @@ const HomePage = () => {
                 ))}
                 {!hrPolicies?.length && (
                   <p className="text-sm text-muted-foreground">No policies available</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Company News */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Newspaper className="h-5 w-5" />
+                <span>Company News</span>
+              </CardTitle>
+              <CardDescription>Latest company announcements</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {news?.map((item) => (
+                  <div key={item.id} className="border rounded p-3">
+                    <h4 className="font-medium mb-1">{item.title}</h4>
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {item.excerpt}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {new Date(item.date).toLocaleDateString()}
+                    </p>
+                  </div>
+                ))}
+                {!news?.length && (
+                  <p className="text-sm text-muted-foreground">No news available</p>
                 )}
               </div>
             </CardContent>

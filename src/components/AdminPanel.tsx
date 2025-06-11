@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Users, UserCheck, MessageSquare, Settings, Calendar as CalendarIcon, FileText, Newspaper } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Users, UserCheck, MessageSquare, Settings, Calendar as CalendarIcon, FileText, Newspaper, Upload, Trash2, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -26,6 +27,9 @@ const AdminPanel = () => {
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState('');
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   // Fetch all employees
   const { data: employees } = useQuery({
@@ -41,7 +45,7 @@ const AdminPanel = () => {
     }
   });
 
-  // Fetch performance reviews
+  // Fetch performance reviews with proper joins
   const { data: reviews } = useQuery({
     queryKey: ['performance-reviews'],
     queryFn: async () => {
@@ -54,8 +58,11 @@ const AdminPanel = () => {
         `)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error('Error fetching reviews:', error);
+        return [];
+      }
+      return data || [];
     }
   });
 
@@ -96,12 +103,17 @@ const AdminPanel = () => {
     }
   });
 
-  // Update role mutation
-  const updateRoleMutation = useMutation({
-    mutationFn: async ({ employeeId, newRole }: { employeeId: string, newRole: string }) => {
+  // Update role and department mutation
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async ({ employeeId, newRole, department }: { employeeId: string, newRole: string, department?: string }) => {
+      const updateData: any = { role: newRole as 'employee' | 'manager' | 'hr' | 'admin' | 'ceo' };
+      if (department !== undefined) {
+        updateData.department = department;
+      }
+      
       const { error } = await supabase
         .from('profiles')
-        .update({ role: newRole })
+        .update(updateData)
         .eq('id', employeeId);
       
       if (error) throw error;
@@ -110,13 +122,62 @@ const AdminPanel = () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast({
         title: "Success",
-        description: "Employee role updated successfully!"
+        description: "Employee updated successfully!"
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update role",
+        description: "Failed to update employee",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Change password mutation
+  const changePasswordMutation = useMutation({
+    mutationFn: async ({ userId, newPassword }: { userId: string, newPassword: string }) => {
+      const { error } = await supabase.auth.admin.updateUserById(userId, {
+        password: newPassword
+      });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setIsPasswordDialogOpen(false);
+      setNewPassword('');
+      setSelectedUserId('');
+      toast({
+        title: "Success",
+        description: "Password updated successfully!"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update password",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete user mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.auth.admin.deleteUser(userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast({
+        title: "Success",
+        description: "User deleted successfully!"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to delete user",
         variant: "destructive"
       });
     }
@@ -136,7 +197,29 @@ const AdminPanel = () => {
   };
 
   const handleRoleChange = (employeeId: string, newRole: string) => {
-    updateRoleMutation.mutate({ employeeId, newRole });
+    updateEmployeeMutation.mutate({ employeeId, newRole });
+  };
+
+  const handleDepartmentChange = (employeeId: string, department: string) => {
+    updateEmployeeMutation.mutate({ employeeId, newRole: employees?.find(e => e.id === employeeId)?.role || 'employee', department });
+  };
+
+  const handleChangePassword = () => {
+    if (!selectedUserId || !newPassword) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    changePasswordMutation.mutate({ userId: selectedUserId, newPassword });
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      deleteUserMutation.mutate(userId);
+    }
   };
 
   const getRatingBadge = (rating: number) => {
@@ -252,12 +335,12 @@ const AdminPanel = () => {
                     {reviews?.slice(0, 5).map((review) => (
                       <div key={review.id} className="border rounded-lg p-4">
                         <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium">{review.employee?.full_name}</h4>
+                          <h4 className="font-medium">{review.employee?.full_name || 'Unknown Employee'}</h4>
                           {getRatingBadge(review.rating)}
                         </div>
                         <p className="text-sm text-muted-foreground mb-2">{review.feedback}</p>
                         <p className="text-xs text-muted-foreground">
-                          By {review.reviewer?.full_name} on {new Date(review.created_at).toLocaleDateString()}
+                          By {review.reviewer?.full_name || 'Unknown Reviewer'} on {new Date(review.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     ))}
@@ -273,8 +356,8 @@ const AdminPanel = () => {
           <TabsContent value="roles" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Employee Role Management</CardTitle>
-                <CardDescription>Update employee roles and access permissions</CardDescription>
+                <CardTitle>Employee Role & Department Management</CardTitle>
+                <CardDescription>Update employee roles, departments and access permissions</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -283,7 +366,8 @@ const AdminPanel = () => {
                       <TableHead>Employee Name</TableHead>
                       <TableHead>Current Role</TableHead>
                       <TableHead>Department</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead>Role Actions</TableHead>
+                      <TableHead>Department Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -310,6 +394,21 @@ const AdminPanel = () => {
                             </SelectContent>
                           </Select>
                         </TableCell>
+                        <TableCell>
+                          <Select onValueChange={(value) => handleDepartmentChange(employee.id, value)}>
+                            <SelectTrigger className="w-40">
+                              <SelectValue placeholder="Change dept" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Engineering">Engineering</SelectItem>
+                              <SelectItem value="Marketing">Marketing</SelectItem>
+                              <SelectItem value="Sales">Sales</SelectItem>
+                              <SelectItem value="HR">HR</SelectItem>
+                              <SelectItem value="Finance">Finance</SelectItem>
+                              <SelectItem value="Operations">Operations</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -321,8 +420,8 @@ const AdminPanel = () => {
           <TabsContent value="employees" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Employee Overview</CardTitle>
-                <CardDescription>Complete list of all employees and their details</CardDescription>
+                <CardTitle>Employee Management</CardTitle>
+                <CardDescription>Complete list of all employees and their management options</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -333,7 +432,7 @@ const AdminPanel = () => {
                       <TableHead>Role</TableHead>
                       <TableHead>Department</TableHead>
                       <TableHead>Join Date</TableHead>
-                      <TableHead>Admin Access</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -349,11 +448,25 @@ const AdminPanel = () => {
                         <TableCell>{employee.department || 'Not assigned'}</TableCell>
                         <TableCell>{employee.join_date ? new Date(employee.join_date).toLocaleDateString() : 'Not set'}</TableCell>
                         <TableCell>
-                          {['admin', 'hr', 'manager', 'ceo'].includes(employee.role) ? (
-                            <Badge variant="default">Yes</Badge>
-                          ) : (
-                            <Badge variant="secondary">No</Badge>
-                          )}
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedUserId(employee.id);
+                                setIsPasswordDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteUser(employee.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -361,6 +474,37 @@ const AdminPanel = () => {
                 </Table>
               </CardContent>
             </Card>
+
+            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Change Password</DialogTitle>
+                  <DialogDescription>
+                    Enter a new password for the selected user
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleChangePassword} disabled={changePasswordMutation.isPending}>
+                      {changePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="holidays" className="space-y-6">

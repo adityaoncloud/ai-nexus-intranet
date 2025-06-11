@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,143 +9,190 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Newspaper, FileText, Upload, Edit, Trash2, Eye } from 'lucide-react';
-
-interface CeoUpdate {
-  id: string;
-  title: string;
-  content: string;
-  author: string;
-  publishDate: string;
-  status: 'draft' | 'published';
-}
-
-interface HrPolicy {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  lastUpdated: string;
-  version: string;
-  documentUrl?: string;
-}
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
 const ContentManagement = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   const [ceoUpdateTitle, setCeoUpdateTitle] = useState('');
   const [ceoUpdateContent, setCeoUpdateContent] = useState('');
+  const [isFeatured, setIsFeatured] = useState(false);
   const [hrPolicyTitle, setHrPolicyTitle] = useState('');
   const [hrPolicyContent, setHrPolicyContent] = useState('');
   const [hrPolicyCategory, setHrPolicyCategory] = useState('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
-  // Mock data - replace with API calls
-  const [ceoUpdates, setCeoUpdates] = useState<CeoUpdate[]>([
-    {
-      id: '1',
-      title: 'Q2 Performance and Vision for H2',
-      content: 'Team, I am excited to share our outstanding Q2 results and outline our strategic vision for the second half of this year...',
-      author: 'John Smith (CEO)',
-      publishDate: '2024-06-01',
-      status: 'published'
-    },
-    {
-      id: '2',
-      title: 'New Office Opening in Austin',
-      content: 'We are thrilled to announce the opening of our new development center in Austin, Texas...',
-      author: 'John Smith (CEO)',
-      publishDate: '2024-05-15',
-      status: 'published'
+  // Fetch CEO updates
+  const { data: ceoUpdates } = useQuery({
+    queryKey: ['admin-ceo-updates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ceo_updates')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
     }
-  ]);
+  });
 
-  const [hrPolicies, setHrPolicies] = useState<HrPolicy[]>([
-    {
-      id: '1',
-      title: 'Remote Work Policy',
-      content: 'This policy outlines the guidelines and expectations for remote work arrangements...',
-      category: 'Work Arrangements',
-      lastUpdated: '2024-05-20',
-      version: '2.1'
-    },
-    {
-      id: '2',
-      title: 'Code of Conduct',
-      content: 'Our code of conduct establishes the ethical standards and behavioral expectations...',
-      category: 'Ethics & Compliance',
-      lastUpdated: '2024-04-10',
-      version: '1.5'
+  // Fetch HR policies
+  const { data: hrPolicies } = useQuery({
+    queryKey: ['admin-hr-policies'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('hr_policies')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
     }
-  ]);
+  });
+
+  // Add CEO update mutation
+  const addCeoUpdateMutation = useMutation({
+    mutationFn: async () => {
+      if (!ceoUpdateTitle || !ceoUpdateContent) {
+        throw new Error('Please fill in all fields');
+      }
+
+      const { error } = await supabase
+        .from('ceo_updates')
+        .insert({
+          title: ceoUpdateTitle,
+          content: ceoUpdateContent,
+          is_featured: isFeatured,
+          created_by: user?.id
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-ceo-updates'] });
+      queryClient.invalidateQueries({ queryKey: ['ceo-updates'] }); // Refresh homepage data
+      setCeoUpdateTitle('');
+      setCeoUpdateContent('');
+      setIsFeatured(false);
+      toast({
+        title: "Success",
+        description: "CEO update published successfully!"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to publish CEO update",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Add HR policy mutation
+  const addHrPolicyMutation = useMutation({
+    mutationFn: async () => {
+      if (!hrPolicyTitle || !hrPolicyContent || !hrPolicyCategory) {
+        throw new Error('Please fill in all fields');
+      }
+
+      const { error } = await supabase
+        .from('hr_policies')
+        .insert({
+          title: hrPolicyTitle,
+          content: hrPolicyContent,
+          category: hrPolicyCategory,
+          created_by: user?.id,
+          is_active: true
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-hr-policies'] });
+      queryClient.invalidateQueries({ queryKey: ['hr-policies'] }); // Refresh homepage data
+      setHrPolicyTitle('');
+      setHrPolicyContent('');
+      setHrPolicyCategory('');
+      setUploadedFile(null);
+      toast({
+        title: "Success",
+        description: "HR policy created successfully!"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create HR policy",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete content mutations
+  const deleteCeoUpdateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('ceo_updates')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-ceo-updates'] });
+      queryClient.invalidateQueries({ queryKey: ['ceo-updates'] });
+      toast({
+        title: "Success",
+        description: "CEO update deleted successfully!"
+      });
+    }
+  });
+
+  const deleteHrPolicyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('hr_policies')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-hr-policies'] });
+      queryClient.invalidateQueries({ queryKey: ['hr-policies'] });
+      toast({
+        title: "Success",
+        description: "HR policy deleted successfully!"
+      });
+    }
+  });
 
   const handleAddCeoUpdate = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!ceoUpdateTitle || !ceoUpdateContent) return;
-
-    const newUpdate: CeoUpdate = {
-      id: Date.now().toString(),
-      title: ceoUpdateTitle,
-      content: ceoUpdateContent,
-      author: 'John Smith (CEO)', // This would come from auth context
-      publishDate: new Date().toISOString().split('T')[0],
-      status: 'published'
-    };
-
-    // TODO: Replace with API call
-    // await createCeoUpdate(newUpdate);
-    
-    setCeoUpdates(prev => [newUpdate, ...prev]);
-    
-    setCeoUpdateTitle('');
-    setCeoUpdateContent('');
-    
-    console.log('CEO update published:', newUpdate);
+    addCeoUpdateMutation.mutate();
   };
 
   const handleAddHrPolicy = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!hrPolicyTitle || !hrPolicyContent || !hrPolicyCategory) return;
-
-    const newPolicy: HrPolicy = {
-      id: Date.now().toString(),
-      title: hrPolicyTitle,
-      content: hrPolicyContent,
-      category: hrPolicyCategory,
-      lastUpdated: new Date().toISOString().split('T')[0],
-      version: '1.0'
-    };
-
-    // TODO: Replace with API call
-    // await createHrPolicy(newPolicy);
-    
-    setHrPolicies(prev => [newPolicy, ...prev]);
-    
-    setHrPolicyTitle('');
-    setHrPolicyContent('');
-    setHrPolicyCategory('');
-    
-    console.log('HR policy created:', newPolicy);
-  };
-
-  const handleDeleteContent = (id: string, type: 'ceo' | 'hr') => {
-    if (type === 'ceo') {
-      // TODO: Replace with API call
-      // await deleteCeoUpdate(id);
-      setCeoUpdates(prev => prev.filter(update => update.id !== id));
-    } else {
-      // TODO: Replace with API call
-      // await deleteHrPolicy(id);
-      setHrPolicies(prev => prev.filter(policy => policy.id !== id));
-    }
-    console.log(`${type} content deleted:`, id);
+    addHrPolicyMutation.mutate();
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // TODO: Implement file upload to storage
-      // const uploadedUrl = await uploadFile(file);
+      setUploadedFile(file);
+      // TODO: Implement actual file upload to Supabase Storage
       console.log('File uploaded:', file.name);
+      toast({
+        title: "Info",
+        description: `File "${file.name}" selected. File upload functionality will be implemented soon.`
+      });
     }
   };
 
@@ -191,9 +239,17 @@ const ContentManagement = () => {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="featured"
+                    checked={isFeatured}
+                    onCheckedChange={(checked) => setIsFeatured(checked as boolean)}
+                  />
+                  <Label htmlFor="featured">Mark as featured</Label>
+                </div>
+                <Button type="submit" className="w-full" disabled={addCeoUpdateMutation.isPending}>
                   <Newspaper className="mr-2 h-4 w-4" />
-                  Publish CEO Update
+                  {addCeoUpdateMutation.isPending ? 'Publishing...' : 'Publish CEO Update'}
                 </Button>
               </form>
             </CardContent>
@@ -206,34 +262,26 @@ const ContentManagement = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {ceoUpdates.slice(0, 3).map((update) => (
+                {ceoUpdates?.slice(0, 3).map((update) => (
                   <div key={update.id} className="border rounded-lg p-4">
                     <div className="flex justify-between items-start mb-2">
                       <h4 className="font-medium">{update.title}</h4>
-                      <Badge variant={update.status === 'published' ? 'default' : 'secondary'}>
-                        {update.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                      {update.content}
-                    </p>
-                    <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span>{update.publishDate}</span>
-                      <div className="flex space-x-1">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-3 w-3" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-3 w-3" />
-                        </Button>
+                      <div className="flex items-center space-x-2">
+                        {update.is_featured && <Badge variant="default">Featured</Badge>}
                         <Button 
                           variant="ghost" 
                           size="sm"
-                          onClick={() => handleDeleteContent(update.id, 'ceo')}
+                          onClick={() => deleteCeoUpdateMutation.mutate(update.id)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                      {update.content}
+                    </p>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(update.created_at).toLocaleDateString()}
                     </div>
                   </div>
                 ))}
@@ -252,36 +300,31 @@ const ContentManagement = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>Author</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Featured</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ceoUpdates.map((update) => (
+                {ceoUpdates?.map((update) => (
                   <TableRow key={update.id}>
                     <TableCell className="font-medium">{update.title}</TableCell>
-                    <TableCell>{update.author}</TableCell>
-                    <TableCell>{update.publishDate}</TableCell>
+                    <TableCell>{new Date(update.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <Badge variant={update.status === 'published' ? 'default' : 'secondary'}>
-                        {update.status}
-                      </Badge>
+                      {update.is_featured ? (
+                        <Badge variant="default">Yes</Badge>
+                      ) : (
+                        <Badge variant="secondary">No</Badge>
+                      )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleDeleteContent(update.id, 'ceo')}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => deleteCeoUpdateMutation.mutate(update.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -340,10 +383,15 @@ const ContentManagement = () => {
                   accept=".pdf,.doc,.docx"
                   onChange={handleFileUpload}
                 />
+                {uploadedFile && (
+                  <p className="text-sm text-muted-foreground">
+                    Selected: {uploadedFile.name}
+                  </p>
+                )}
               </div>
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={addHrPolicyMutation.isPending}>
                 <Upload className="mr-2 h-4 w-4" />
-                Save HR Policy
+                {addHrPolicyMutation.isPending ? 'Saving...' : 'Save HR Policy'}
               </Button>
             </form>
           </CardContent>
@@ -360,36 +408,32 @@ const ContentManagement = () => {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Version</TableHead>
-                  <TableHead>Last Updated</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {hrPolicies.map((policy) => (
+                {hrPolicies?.map((policy) => (
                   <TableRow key={policy.id}>
                     <TableCell className="font-medium">{policy.title}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{policy.category}</Badge>
                     </TableCell>
-                    <TableCell>{policy.version}</TableCell>
-                    <TableCell>{policy.lastUpdated}</TableCell>
+                    <TableCell>{new Date(policy.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleDeleteContent(policy.id, 'hr')}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <Badge variant={policy.is_active ? 'default' : 'secondary'}>
+                        {policy.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => deleteHrPolicyMutation.mutate(policy.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
