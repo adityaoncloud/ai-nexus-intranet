@@ -1,360 +1,205 @@
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, User, FileText, DollarSign, Star, Clock, Settings } from 'lucide-react';
-import ProfilePictureUpload from './ProfilePictureUpload';
-import EmployeeCalendar from './EmployeeCalendar';
+import { Calendar, Clock, User, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
 const EmployeeDashboard = () => {
-  // Mock employee data
-  const [employee, setEmployee] = useState({
-    name: "John Doe",
-    id: "EMP001",
-    email: "john.doe@techcorp.com",
-    position: "Senior AI Engineer",
-    department: "AI Research",
-    joinDate: "2023-01-15",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
-    manager: "Sarah Smith",
-    totalLeaves: 25,
-    usedLeaves: 8,
-    pendingLeaves: 2
-  });
+  const { user, userProfile } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const handleAvatarChange = (newAvatar: string) => {
-    setEmployee(prev => ({ ...prev, avatar: newAvatar }));
-  };
-
-  const [leaveRequests] = useState([
-    { id: 1, type: "Vacation", startDate: "2024-07-15", endDate: "2024-07-19", status: "Pending", days: 5 },
-    { id: 2, type: "Sick Leave", startDate: "2024-06-20", endDate: "2024-06-20", status: "Approved", days: 1 },
-    { id: 3, type: "Personal", startDate: "2024-05-10", endDate: "2024-05-10", status: "Approved", days: 0.5 }
-  ]);
-
-  const [reviews] = useState([
-    {
-      id: 1,
-      reviewer: "Sarah Smith (Manager)",
-      date: "2024-05-15",
-      rating: 4.5,
-      feedback: "Excellent work on the NLP project. John consistently delivers high-quality code and shows great initiative in research.",
-      period: "Q1 2024"
+  // Fetch user's leave requests
+  const { data: leaveRequests } = useQuery({
+    queryKey: ['leave-requests', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
     },
-    {
-      id: 2,
-      reviewer: "Mike Johnson (HR)",
-      date: "2024-02-28",
-      rating: 4.2,
-      feedback: "Strong team player with excellent technical skills. Great mentoring of junior developers.",
-      period: "Annual Review 2023"
-    }
-  ]);
-
-  const [salaryStatus] = useState({
-    currentSalary: "$95,000",
-    lastPaid: "2024-05-31",
-    nextPayment: "2024-06-30",
-    status: "Paid",
-    bonuses: "$5,000"
+    enabled: !!user?.id
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'approved': return 'default';
-      case 'pending': return 'secondary';
-      case 'rejected': return 'destructive';
-      case 'paid': return 'default';
-      default: return 'secondary';
+  // Fetch user's onboarding progress
+  const { data: onboardingProgress } = useQuery({
+    queryKey: ['onboarding-progress', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_onboarding_progress')
+        .select(`
+          *,
+          onboarding_tasks (*)
+        `)
+        .eq('user_id', user?.id);
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id
+  });
+
+  // Fetch all onboarding tasks
+  const { data: allTasks } = useQuery({
+    queryKey: ['onboarding-tasks'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('onboarding_tasks')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Complete onboarding task mutation
+  const completeTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      const { error } = await supabase
+        .from('user_onboarding_progress')
+        .upsert({
+          user_id: user?.id,
+          task_id: taskId,
+          completed_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['onboarding-progress'] });
+      toast({
+        title: "Success",
+        description: "Task marked as completed!"
+      });
+    }
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
+      case 'rejected':
+        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
+      default:
+        return <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
     }
   };
+
+  const completedTaskIds = onboardingProgress?.map(p => p.task_id) || [];
+  const completionRate = allTasks ? Math.round((completedTaskIds.length / allTasks.length) * 100) : 0;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Employee Profile Header */}
-        <Card className="mb-8">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
-              <img
-                src={employee.avatar}
-                alt={employee.name}
-                className="w-24 h-24 rounded-full border-4 border-primary/20"
-              />
-              <div className="flex-1 text-center md:text-left">
-                <h1 className="text-2xl font-bold text-foreground">{employee.name}</h1>
-                <p className="text-lg text-muted-foreground">{employee.position}</p>
-                <p className="text-sm text-muted-foreground">{employee.department}</p>
-                <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Employee ID: </span>
-                    <span className="font-medium">{employee.id}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Manager: </span>
-                    <span className="font-medium">{employee.manager}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Join Date: </span>
-                    <span className="font-medium">{employee.joinDate}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-primary">{employee.totalLeaves}</div>
-                    <div className="text-xs text-muted-foreground">Total Leaves</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-orange-500">{employee.usedLeaves}</div>
-                    <div className="text-xs text-muted-foreground">Used</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-blue-500">{employee.pendingLeaves}</div>
-                    <div className="text-xs text-muted-foreground">Pending</div>
-                  </div>
-                </div>
-              </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-foreground mb-2">My Dashboard</h1>
+        <p className="text-muted-foreground">Welcome back, {userProfile?.full_name}</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Profile Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <User className="h-5 w-5" />
+              <span>Profile</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <p><strong>Name:</strong> {userProfile?.full_name}</p>
+              <p><strong>Email:</strong> {userProfile?.email}</p>
+              <p><strong>Role:</strong> <span className="capitalize">{userProfile?.role}</span></p>
+              <p><strong>Department:</strong> {userProfile?.department || 'Not assigned'}</p>
+              <p><strong>Position:</strong> {userProfile?.position || 'Not assigned'}</p>
+              <p><strong>Join Date:</strong> {userProfile?.join_date ? new Date(userProfile.join_date).toLocaleDateString() : 'Not set'}</p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Dashboard Tabs */}
-        <Tabs defaultValue="leaves" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="leaves">Leave Management</TabsTrigger>
-            <TabsTrigger value="calendar">My Calendar</TabsTrigger>
-            <TabsTrigger value="reviews">Performance Reviews</TabsTrigger>
-            <TabsTrigger value="salary">Salary & Benefits</TabsTrigger>
-            <TabsTrigger value="profile">Profile Settings</TabsTrigger>
-          </TabsList>
-
-          {/* Leave Management Tab */}
-          <TabsContent value="leaves">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Request New Leave */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Calendar className="h-5 w-5" />
-                    <span>Request Leave</span>
-                  </CardTitle>
-                  <CardDescription>Submit a new leave request</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button className="w-full">Full Day Leave</Button>
-                    <Button variant="outline" className="w-full">Half Day Leave</Button>
+        {/* Leave Requests */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Calendar className="h-5 w-5" />
+              <span>Leave Requests</span>
+            </CardTitle>
+            <CardDescription>Your recent leave requests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {leaveRequests?.slice(0, 3).map((request) => (
+                <div key={request.id} className="border rounded p-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-medium capitalize">{request.leave_type}</span>
+                    {getStatusBadge(request.status)}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button variant="outline" className="w-full">Sick Leave</Button>
-                    <Button variant="outline" className="w-full">Personal Leave</Button>
-                  </div>
-                  <Button variant="secondary" className="w-full">
-                    <Clock className="h-4 w-4 mr-2" />
-                    Advanced Request Form
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Leave Balance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Leave Balance Overview</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-3 bg-primary/5 rounded-lg">
-                      <span className="font-medium">Annual Leave</span>
-                      <span className="font-bold">{employee.totalLeaves - employee.usedLeaves} days remaining</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                      <span className="font-medium">Sick Leave</span>
-                      <span className="font-bold">10 days remaining</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                      <span className="font-medium">Personal Leave</span>
-                      <span className="font-bold">5 days remaining</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Recent Leave Requests */}
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Recent Leave Requests</CardTitle>
-                  <CardDescription>Your leave request history</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {leaveRequests.map((request) => (
-                      <div key={request.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3">
-                            <span className="font-medium">{request.type}</span>
-                            <Badge variant={getStatusColor(request.status)}>{request.status}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {request.startDate} to {request.endDate} ({request.days} {request.days === 1 ? 'day' : 'days'})
-                          </p>
-                        </div>
-                        <Button variant="ghost" size="sm">View Details</Button>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Calendar Tab */}
-          <TabsContent value="calendar">
-            <EmployeeCalendar />
-          </TabsContent>
-
-          {/* Performance Reviews Tab */}
-          <TabsContent value="reviews">
-            <div className="space-y-6">
-              {reviews.map((review) => (
-                <Card key={review.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="flex items-center space-x-2">
-                          <Star className="h-5 w-5" />
-                          <span>Performance Review - {review.period}</span>
-                        </CardTitle>
-                        <CardDescription>Reviewed by {review.reviewer} on {review.date}</CardDescription>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center space-x-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${i < Math.floor(review.rating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-sm font-medium">{review.rating}/5.0</span>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{review.feedback}</p>
-                  </CardContent>
-                </Card>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
+                  </p>
+                  {request.reason && (
+                    <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
+                  )}
+                </div>
               ))}
+              {!leaveRequests?.length && (
+                <p className="text-sm text-muted-foreground">No leave requests yet</p>
+              )}
             </div>
-          </TabsContent>
+          </CardContent>
+        </Card>
 
-          {/* Salary & Benefits Tab */}
-          <TabsContent value="salary">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <DollarSign className="h-5 w-5" />
-                    <span>Salary Information</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-primary/5 rounded-lg">
-                    <span className="font-medium">Current Salary</span>
-                    <span className="font-bold text-lg">{salaryStatus.currentSalary}</span>
+        {/* Onboarding Progress */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <FileText className="h-5 w-5" />
+              <span>Onboarding Progress</span>
+            </CardTitle>
+            <CardDescription>{completionRate}% Complete</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allTasks?.slice(0, 4).map((task) => {
+                const isCompleted = completedTaskIds.includes(task.id);
+                return (
+                  <div key={task.id} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      {isCompleted ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <div className="h-4 w-4 border border-muted-foreground rounded-full" />
+                      )}
+                      <span className={`text-sm ${isCompleted ? 'line-through text-muted-foreground' : ''}`}>
+                        {task.title}
+                      </span>
+                    </div>
+                    {!isCompleted && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => completeTaskMutation.mutate(task.id)}
+                        disabled={completeTaskMutation.isPending}
+                      >
+                        Complete
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                    <span className="font-medium">Annual Bonus</span>
-                    <span className="font-bold">{salaryStatus.bonuses}</span>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Last Payment</span>
-                      <span className="text-sm font-medium">{salaryStatus.lastPaid}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Next Payment</span>
-                      <span className="text-sm font-medium">{salaryStatus.nextPayment}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Status</span>
-                      <Badge variant={getStatusColor(salaryStatus.status)}>{salaryStatus.status}</Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Benefits Overview</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 border border-border rounded-lg">
-                      <span className="font-medium">Health Insurance</span>
-                      <Badge variant="default">Active</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 border border-border rounded-lg">
-                      <span className="font-medium">401(k) Plan</span>
-                      <Badge variant="default">Contributing 6%</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 border border-border rounded-lg">
-                      <span className="font-medium">Dental Coverage</span>
-                      <Badge variant="default">Active</Badge>
-                    </div>
-                    <div className="flex justify-between items-center p-3 border border-border rounded-lg">
-                      <span className="font-medium">Life Insurance</span>
-                      <Badge variant="default">2x Salary</Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                );
+              })}
             </div>
-          </TabsContent>
-
-          {/* Profile Settings Tab */}
-          <TabsContent value="profile">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ProfilePictureUpload 
-                currentAvatar={employee.avatar}
-                onAvatarChange={handleAvatarChange}
-              />
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Settings className="h-5 w-5" />
-                    <span>Account Settings</span>
-                  </CardTitle>
-                  <CardDescription>Manage your account preferences</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Email Notifications</label>
-                    <div className="space-y-2">
-                      <label className="flex items-center space-x-2">
-                        <input type="checkbox" defaultChecked className="rounded" />
-                        <span className="text-sm">Leave request updates</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input type="checkbox" defaultChecked className="rounded" />
-                        <span className="text-sm">Performance review notifications</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input type="checkbox" className="rounded" />
-                        <span className="text-sm">Company announcements</span>
-                      </label>
-                    </div>
-                  </div>
-                  <Button className="w-full">Save Preferences</Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

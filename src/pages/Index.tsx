@@ -1,20 +1,23 @@
 
 import React from 'react';
-import { useLocation } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import Layout from '../components/Layout';
 import HomePage from '../components/HomePage';
-import LoginPage from '../components/LoginPage';
+import AuthPage from '../components/AuthPage';
 
 const Index = () => {
-  const location = useLocation();
-  const isAuthenticated = true; // Mock authentication - will be replaced with real auth
+  const { user, loading } = useAuth();
 
-  if (!isAuthenticated && location.pathname !== '/login') {
+  if (loading) {
     return (
-      <Layout>
-        <LoginPage />
-      </Layout>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
     );
+  }
+
+  if (!user) {
+    return <AuthPage />;
   }
 
   return (

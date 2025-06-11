@@ -3,16 +3,15 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { User, LogOut, Home, Users, Calendar, FileText, Wrench } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 const Navbar = () => {
   const location = useLocation();
+  const { userProfile, signOut } = useAuth();
   
-  // Mock user data - will be replaced with real authentication
-  const user = {
-    name: "John Doe",
-    role: "CEO", // Changed to CEO to give admin access
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face"
-  };
+  if (!userProfile) {
+    return null;
+  }
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -23,8 +22,8 @@ const Navbar = () => {
     { path: '/tools', label: 'Internal Tools', icon: Wrench },
   ];
 
-  // Add admin routes for HR/Manager/CEO roles
-  if (['HR', 'Manager', 'CEO'].includes(user.role)) {
+  // Add admin routes for HR/Manager/CEO/Admin roles
+  if (['hr', 'manager', 'ceo', 'admin'].includes(userProfile.role)) {
     navigationItems.push(
       { path: '/admin', label: 'Admin Panel', icon: Users },
       { path: '/onboarding', label: 'Onboarding', icon: FileText }
@@ -38,7 +37,7 @@ const Navbar = () => {
           {/* Logo and Company Name */}
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">AI</span>
+              <span className="text-primary-foreground font-bold text-sm">TC</span>
             </div>
             <span className="text-xl font-bold text-foreground">TechCorp</span>
           </div>
@@ -69,17 +68,30 @@ const Navbar = () => {
           {/* User Menu */}
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <img
-                src={user.avatar}
-                alt={user.name}
-                className="w-8 h-8 rounded-full"
-              />
+              {userProfile.avatar_url ? (
+                <img
+                  src={userProfile.avatar_url}
+                  alt={userProfile.full_name}
+                  className="w-8 h-8 rounded-full"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                  <span className="text-primary-foreground text-sm font-medium">
+                    {userProfile.full_name?.charAt(0) || 'U'}
+                  </span>
+                </div>
+              )}
               <div className="hidden sm:block">
-                <p className="text-sm font-medium text-foreground">{user.name}</p>
-                <p className="text-xs text-muted-foreground">{user.role}</p>
+                <p className="text-sm font-medium text-foreground">{userProfile.full_name}</p>
+                <p className="text-xs text-muted-foreground capitalize">{userProfile.role}</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive hover:text-destructive-foreground">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={signOut}
+            >
               <LogOut size={16} />
             </Button>
           </div>
