@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +11,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { UserPlus, FileText, Briefcase } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 const EmployeeOnboarding = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -21,30 +27,120 @@ const EmployeeOnboarding = () => {
     startDate: '',
     manager: '',
     bio: '',
-    skills: ''
+    skills: '',
+    password: ''
   });
 
-  // Mock data for pending onboardings
-  const pendingOnboardings = [
-    { 
-      id: 1, 
-      name: 'Alice Cooper', 
-      email: 'alice.cooper@techcorp.com', 
-      department: 'Engineering', 
-      role: 'Software Engineer',
-      startDate: '2024-06-15',
-      status: 'Pending'
-    },
-    { 
-      id: 2, 
-      name: 'Bob Miller', 
-      email: 'bob.miller@techcorp.com', 
-      department: 'Design', 
-      role: 'UI/UX Designer',
-      startDate: '2024-06-20',
-      status: 'In Progress'
+  // Fetch existing employees to show as managers
+  const { data: existingEmployees } = useQuery({
+    queryKey: ['existing-employees'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .in('role', ['manager', 'hr', 'ceo', 'admin']);
+      
+      if (error) throw error;
+      return data;
     }
-  ];
+  });
+
+  // Fetch pending onboardings (newly created users without complete profiles)
+  const { data: pendingOnboardings } = useQuery({
+    queryKey: ['pending-onboardings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .is('department', null)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Create new employee mutation
+  const createEmployeeMutation = useMutation({
+    mutationFn: async (employeeData: any) => {
+      // First, create the user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: employeeData.email,
+        password: employeeData.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: `${employeeData.firstName} ${employeeData.lastName}`
+        }
+      });
+
+      if (authError) throw authError;
+
+      // Then update the profile with additional information
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: `${employeeData.firstName} ${employeeData.lastName}`,
+          department: employeeData.department,
+          position: employeeData.role,
+          role: 'employee', // Default role is employee (least rights)
+          manager_id: employeeData.manager || null,
+          join_date: employeeData.startDate
+        })
+        .eq('id', authData.user.id);
+
+      if (profileError) throw profileError;
+
+      return authData.user;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-onboardings'] });
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        department: '',
+        role: '',
+        startDate: '',
+        manager: '',
+        bio: '',
+        skills: '',
+        password: ''
+      });
+      toast({
+        title: "Success",
+        description: "New employee has been added to the system with employee access rights!"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create employee",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update onboarding status mutation
+  const updateOnboardingMutation = useMutation({
+    mutationFn: async ({ employeeId, department, position }: { employeeId: string, department: string, position: string }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          department,
+          position
+        })
+        .eq('id', employeeId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-onboardings'] });
+      toast({
+        title: "Success",
+        description: "Employee onboarding updated successfully!"
+      });
+    }
+  });
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -55,26 +151,21 @@ const EmployeeOnboarding = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Onboarding form submitted:', formData);
-    // This will be implemented with Supabase
     
-    // Reset form
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      department: '',
-      role: '',
-      startDate: '',
-      manager: '',
-      bio: '',
-      skills: ''
-    });
+    if (!formData.password) {
+      toast({
+        title: "Error",
+        description: "Password is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    createEmployeeMutation.mutate(formData);
   };
 
-  const handleStatusUpdate = (id: number, newStatus: string) => {
-    console.log('Updating onboarding status:', id, newStatus);
-    // This will be implemented with Supabase
+  const handleStatusUpdate = (employeeId: string, department: string, position: string) => {
+    updateOnboardingMutation.mutate({ employeeId, department, position });
   };
 
   return (
@@ -105,7 +196,7 @@ const EmployeeOnboarding = () => {
                   <span>New Employee Information</span>
                 </CardTitle>
                 <CardDescription>
-                  Add a new employee to the intranet system and assign their role
+                  Add a new employee to the intranet system with employee access rights
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -145,6 +236,18 @@ const EmployeeOnboarding = () => {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Temporary Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      placeholder="Enter temporary password"
+                      required
+                    />
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="department">Department</Label>
@@ -153,29 +256,24 @@ const EmployeeOnboarding = () => {
                           <SelectValue placeholder="Select department" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="engineering">Engineering</SelectItem>
-                          <SelectItem value="design">Design</SelectItem>
-                          <SelectItem value="hr">Human Resources</SelectItem>
-                          <SelectItem value="marketing">Marketing</SelectItem>
-                          <SelectItem value="sales">Sales</SelectItem>
-                          <SelectItem value="finance">Finance</SelectItem>
+                          <SelectItem value="Engineering">Engineering</SelectItem>
+                          <SelectItem value="Design">Design</SelectItem>
+                          <SelectItem value="Human Resources">Human Resources</SelectItem>
+                          <SelectItem value="Marketing">Marketing</SelectItem>
+                          <SelectItem value="Sales">Sales</SelectItem>
+                          <SelectItem value="Finance">Finance</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="role">Employee Role</Label>
-                      <Select value={formData.role} onValueChange={(value) => handleInputChange('role', value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Employee">Employee</SelectItem>
-                          <SelectItem value="Senior Employee">Senior Employee</SelectItem>
-                          <SelectItem value="Manager">Manager</SelectItem>
-                          <SelectItem value="HR">HR</SelectItem>
-                          <SelectItem value="CEO">CEO</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="role">Position</Label>
+                      <Input
+                        id="role"
+                        value={formData.role}
+                        onChange={(e) => handleInputChange('role', e.target.value)}
+                        placeholder="e.g. Software Engineer, Designer"
+                        required
+                      />
                     </div>
                   </div>
 
@@ -197,39 +295,19 @@ const EmployeeOnboarding = () => {
                           <SelectValue placeholder="Select manager" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="mike-johnson">Mike Johnson</SelectItem>
-                          <SelectItem value="sarah-wilson">Sarah Wilson</SelectItem>
-                          <SelectItem value="david-chen">David Chen</SelectItem>
+                          {existingEmployees?.map((manager) => (
+                            <SelectItem key={manager.id} value={manager.id}>
+                              {manager.full_name} ({manager.role})
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="bio">Employee Bio</Label>
-                    <Textarea
-                      id="bio"
-                      value={formData.bio}
-                      onChange={(e) => handleInputChange('bio', e.target.value)}
-                      placeholder="Brief description about the employee..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="skills">Skills & Expertise</Label>
-                    <Textarea
-                      id="skills"
-                      value={formData.skills}
-                      onChange={(e) => handleInputChange('skills', e.target.value)}
-                      placeholder="List key skills and areas of expertise..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <Button type="submit" className="w-full">
+                  <Button type="submit" className="w-full" disabled={createEmployeeMutation.isPending}>
                     <UserPlus size={16} className="mr-2" />
-                    Add Employee to Intranet
+                    {createEmployeeMutation.isPending ? 'Adding Employee...' : 'Add Employee to Intranet'}
                   </Button>
                 </form>
               </CardContent>
@@ -241,53 +319,44 @@ const EmployeeOnboarding = () => {
               <CardHeader>
                 <CardTitle>Pending Onboardings</CardTitle>
                 <CardDescription>
-                  Track and manage employee onboarding progress
+                  Employees who need department and position assignment
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingOnboardings.map((employee) => (
-                      <TableRow key={employee.id}>
-                        <TableCell className="font-medium">{employee.name}</TableCell>
-                        <TableCell>{employee.email}</TableCell>
-                        <TableCell>{employee.department}</TableCell>
-                        <TableCell>{employee.role}</TableCell>
-                        <TableCell>{employee.startDate}</TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={employee.status === 'Pending' ? 'secondary' : 'default'}
-                          >
-                            {employee.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Select onValueChange={(value) => handleStatusUpdate(employee.id, value)}>
-                            <SelectTrigger className="w-32">
-                              <SelectValue placeholder="Update" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="In Progress">In Progress</SelectItem>
-                              <SelectItem value="Completed">Completed</SelectItem>
-                              <SelectItem value="On Hold">On Hold</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
+                {pendingOnboardings?.length ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Join Date</TableHead>
+                        <TableHead>Status</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingOnboardings.map((employee) => (
+                        <TableRow key={employee.id}>
+                          <TableCell className="font-medium">{employee.full_name}</TableCell>
+                          <TableCell>{employee.email}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{employee.role}</Badge>
+                          </TableCell>
+                          <TableCell>{employee.join_date ? new Date(employee.join_date).toLocaleDateString() : 'Not set'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {employee.department ? 'Complete' : 'Pending Department Assignment'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No pending onboardings</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

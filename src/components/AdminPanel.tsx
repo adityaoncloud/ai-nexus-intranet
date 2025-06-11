@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -10,38 +11,139 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Users, UserCheck, MessageSquare, Settings, Calendar as CalendarIcon, FileText, Newspaper } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import HolidayManagement from './HolidayManagement';
 import NewsManager from './NewsManager';
 import ContentManagement from './ContentManagement';
 
 const AdminPanel = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [rating, setRating] = useState('');
 
-  // Mock data - will be replaced with real data from Supabase
-  const employees = [
-    { id: 1, name: 'John Doe', role: 'Employee', department: 'Engineering', status: 'Active' },
-    { id: 2, name: 'Jane Smith', role: 'Employee', department: 'Design', status: 'Active' },
-    { id: 3, name: 'Mike Johnson', role: 'Manager', department: 'Engineering', status: 'Active' },
-    { id: 4, name: 'Sarah Wilson', role: 'HR', department: 'Human Resources', status: 'Active' },
-  ];
+  // Fetch all employees
+  const { data: employees } = useQuery({
+    queryKey: ['employees'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('full_name');
+      
+      if (error) throw error;
+      return data;
+    }
+  });
 
-  const reviews = [
-    { id: 1, employeeName: 'John Doe', reviewer: 'Mike Johnson', rating: 'Excellent', review: 'Outstanding performance this quarter', date: '2024-06-01' },
-    { id: 2, employeeName: 'Jane Smith', reviewer: 'Sarah Wilson', rating: 'Good', review: 'Consistent work quality', date: '2024-06-05' },
-  ];
+  // Fetch performance reviews
+  const { data: reviews } = useQuery({
+    queryKey: ['performance-reviews'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('performance_reviews')
+        .select(`
+          *,
+          employee:profiles!performance_reviews_employee_id_fkey(full_name),
+          reviewer:profiles!performance_reviews_reviewer_id_fkey(full_name)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Submit review mutation
+  const submitReviewMutation = useMutation({
+    mutationFn: async (reviewData: any) => {
+      const selectedEmployeeData = employees?.find(emp => emp.full_name === selectedEmployee);
+      if (!selectedEmployeeData) throw new Error('Employee not found');
+
+      const { error } = await supabase
+        .from('performance_reviews')
+        .insert({
+          employee_id: selectedEmployeeData.id,
+          reviewer_id: user?.id,
+          rating: parseFloat(rating),
+          feedback: reviewText,
+          review_period: new Date().getFullYear().toString()
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
+      setSelectedEmployee('');
+      setReviewText('');
+      setRating('');
+      toast({
+        title: "Success",
+        description: "Performance review submitted successfully!"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to submit review",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update role mutation
+  const updateRoleMutation = useMutation({
+    mutationFn: async ({ employeeId, newRole }: { employeeId: string, newRole: string }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', employeeId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      toast({
+        title: "Success",
+        description: "Employee role updated successfully!"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to update role",
+        variant: "destructive"
+      });
+    }
+  });
 
   const handleSubmitReview = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Submitting review:', { selectedEmployee, reviewText, rating });
-    setSelectedEmployee('');
-    setReviewText('');
-    setRating('');
+    if (!selectedEmployee || !rating || !reviewText.trim()) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+    submitReviewMutation.mutate({ selectedEmployee, rating, reviewText });
   };
 
-  const handleRoleChange = (employeeId: number, newRole: string) => {
-    console.log('Changing role for employee:', employeeId, 'to:', newRole);
+  const handleRoleChange = (employeeId: string, newRole: string) => {
+    updateRoleMutation.mutate({ employeeId, newRole });
+  };
+
+  const getRatingBadge = (rating: number) => {
+    if (rating >= 4.5) return <Badge className="bg-green-500">Excellent</Badge>;
+    if (rating >= 3.5) return <Badge variant="default">Good</Badge>;
+    if (rating >= 2.5) return <Badge variant="secondary">Satisfactory</Badge>;
+    return <Badge variant="destructive">Needs Improvement</Badge>;
   };
 
   return (
@@ -100,25 +202,26 @@ const AdminPanel = () => {
                           <SelectValue placeholder="Choose an employee" />
                         </SelectTrigger>
                         <SelectContent>
-                          {employees.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.name}>
-                              {employee.name} - {employee.department}
+                          {employees?.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.full_name}>
+                              {employee.full_name} - {employee.department || 'No Department'}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="rating">Performance Rating</Label>
+                      <Label htmlFor="rating">Performance Rating (1-5)</Label>
                       <Select value={rating} onValueChange={setRating}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select rating" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="excellent">Excellent</SelectItem>
-                          <SelectItem value="good">Good</SelectItem>
-                          <SelectItem value="satisfactory">Satisfactory</SelectItem>
-                          <SelectItem value="needs-improvement">Needs Improvement</SelectItem>
+                          <SelectItem value="5">5 - Excellent</SelectItem>
+                          <SelectItem value="4">4 - Good</SelectItem>
+                          <SelectItem value="3">3 - Satisfactory</SelectItem>
+                          <SelectItem value="2">2 - Needs Improvement</SelectItem>
+                          <SelectItem value="1">1 - Poor</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -132,7 +235,9 @@ const AdminPanel = () => {
                         rows={4}
                       />
                     </div>
-                    <Button type="submit" className="w-full">Submit Review</Button>
+                    <Button type="submit" className="w-full" disabled={submitReviewMutation.isPending}>
+                      {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
+                    </Button>
                   </form>
                 </CardContent>
               </Card>
@@ -144,20 +249,21 @@ const AdminPanel = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {reviews.map((review) => (
+                    {reviews?.slice(0, 5).map((review) => (
                       <div key={review.id} className="border rounded-lg p-4">
                         <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium">{review.employeeName}</h4>
-                          <Badge variant={review.rating === 'Excellent' ? 'default' : 'secondary'}>
-                            {review.rating}
-                          </Badge>
+                          <h4 className="font-medium">{review.employee?.full_name}</h4>
+                          {getRatingBadge(review.rating)}
                         </div>
-                        <p className="text-sm text-muted-foreground mb-2">{review.review}</p>
+                        <p className="text-sm text-muted-foreground mb-2">{review.feedback}</p>
                         <p className="text-xs text-muted-foreground">
-                          By {review.reviewer} on {review.date}
+                          By {review.reviewer?.full_name} on {new Date(review.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     ))}
+                    {!reviews?.length && (
+                      <p className="text-center text-muted-foreground py-4">No reviews yet</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -181,25 +287,26 @@ const AdminPanel = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {employees.map((employee) => (
+                    {employees?.map((employee) => (
                       <TableRow key={employee.id}>
-                        <TableCell className="font-medium">{employee.name}</TableCell>
+                        <TableCell className="font-medium">{employee.full_name}</TableCell>
                         <TableCell>
-                          <Badge variant={employee.role === 'Employee' ? 'secondary' : 'default'}>
+                          <Badge variant={employee.role === 'employee' ? 'secondary' : 'default'}>
                             {employee.role}
                           </Badge>
                         </TableCell>
-                        <TableCell>{employee.department}</TableCell>
+                        <TableCell>{employee.department || 'Not assigned'}</TableCell>
                         <TableCell>
                           <Select onValueChange={(value) => handleRoleChange(employee.id, value)}>
                             <SelectTrigger className="w-40">
                               <SelectValue placeholder="Change role" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="Employee">Employee</SelectItem>
-                              <SelectItem value="Manager">Manager</SelectItem>
-                              <SelectItem value="HR">HR</SelectItem>
-                              <SelectItem value="CEO">CEO</SelectItem>
+                              <SelectItem value="employee">Employee</SelectItem>
+                              <SelectItem value="manager">Manager</SelectItem>
+                              <SelectItem value="hr">HR</SelectItem>
+                              <SelectItem value="ceo">CEO</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -222,27 +329,27 @@ const AdminPanel = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Department</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Join Date</TableHead>
                       <TableHead>Admin Access</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {employees.map((employee) => (
+                    {employees?.map((employee) => (
                       <TableRow key={employee.id}>
-                        <TableCell className="font-medium">{employee.name}</TableCell>
+                        <TableCell className="font-medium">{employee.full_name}</TableCell>
+                        <TableCell>{employee.email}</TableCell>
                         <TableCell>
-                          <Badge variant={employee.role === 'Employee' ? 'secondary' : 'default'}>
+                          <Badge variant={employee.role === 'employee' ? 'secondary' : 'default'}>
                             {employee.role}
                           </Badge>
                         </TableCell>
-                        <TableCell>{employee.department}</TableCell>
+                        <TableCell>{employee.department || 'Not assigned'}</TableCell>
+                        <TableCell>{employee.join_date ? new Date(employee.join_date).toLocaleDateString() : 'Not set'}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{employee.status}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {['HR', 'Manager', 'CEO'].includes(employee.role) ? (
+                          {['admin', 'hr', 'manager', 'ceo'].includes(employee.role) ? (
                             <Badge variant="default">Yes</Badge>
                           ) : (
                             <Badge variant="secondary">No</Badge>
@@ -295,10 +402,10 @@ const AdminPanel = () => {
                       </div>
                       <div className="flex justify-between items-center p-3 border rounded-lg">
                         <div>
-                          <p className="font-medium">NextAuth</p>
-                          <p className="text-sm text-muted-foreground">Authentication provider</p>
+                          <p className="font-medium">Supabase</p>
+                          <p className="text-sm text-muted-foreground">Database and authentication</p>
                         </div>
-                        <Badge variant="default">Ready to Configure</Badge>
+                        <Badge variant="default">Connected</Badge>
                       </div>
                     </div>
                   </div>
@@ -311,12 +418,12 @@ const AdminPanel = () => {
                         <Badge variant="default">Active</Badge>
                       </div>
                       <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <span>File Storage</span>
-                        <Badge variant="secondary">Pending Setup</Badge>
+                        <span>Authentication</span>
+                        <Badge variant="default">Active</Badge>
                       </div>
                       <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <span>Email Notifications</span>
-                        <Badge variant="secondary">Pending Setup</Badge>
+                        <span>File Storage</span>
+                        <Badge variant="secondary">Ready</Badge>
                       </div>
                     </div>
                   </div>

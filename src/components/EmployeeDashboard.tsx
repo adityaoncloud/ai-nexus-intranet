@@ -1,10 +1,15 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, User, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Calendar, Clock, User, FileText, CheckCircle, XCircle, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +18,14 @@ const EmployeeDashboard = () => {
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  const [leaveFormData, setLeaveFormData] = useState({
+    leave_type: '',
+    start_date: '',
+    end_date: '',
+    reason: ''
+  });
+  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
 
   // Fetch user's leave requests
   const { data: leaveRequests } = useQuery({
@@ -63,6 +76,40 @@ const EmployeeDashboard = () => {
     }
   });
 
+  // Submit leave request mutation
+  const submitLeaveRequestMutation = useMutation({
+    mutationFn: async (leaveData: any) => {
+      const { error } = await supabase
+        .from('leave_requests')
+        .insert({
+          user_id: user?.id,
+          leave_type: leaveData.leave_type,
+          start_date: leaveData.start_date,
+          end_date: leaveData.end_date,
+          reason: leaveData.reason,
+          status: 'pending'
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leave-requests'] });
+      setIsLeaveDialogOpen(false);
+      setLeaveFormData({ leave_type: '', start_date: '', end_date: '', reason: '' });
+      toast({
+        title: "Success",
+        description: "Leave request submitted successfully!"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to submit leave request",
+        variant: "destructive"
+      });
+    }
+  });
+
   // Complete onboarding task mutation
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
@@ -84,6 +131,11 @@ const EmployeeDashboard = () => {
       });
     }
   });
+
+  const handleLeaveSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitLeaveRequestMutation.mutate(leaveFormData);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -134,7 +186,77 @@ const EmployeeDashboard = () => {
               <Calendar className="h-5 w-5" />
               <span>Leave Requests</span>
             </CardTitle>
-            <CardDescription>Your recent leave requests</CardDescription>
+            <CardDescription className="flex items-center justify-between">
+              <span>Your recent leave requests</span>
+              <Dialog open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Request Leave
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Submit Leave Request</DialogTitle>
+                    <DialogDescription>
+                      Fill out the form below to request time off
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleLeaveSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="leave_type">Leave Type</Label>
+                      <Select value={leaveFormData.leave_type} onValueChange={(value) => setLeaveFormData(prev => ({ ...prev, leave_type: value }))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select leave type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="vacation">Vacation</SelectItem>
+                          <SelectItem value="sick">Sick Leave</SelectItem>
+                          <SelectItem value="personal">Personal</SelectItem>
+                          <SelectItem value="maternity">Maternity</SelectItem>
+                          <SelectItem value="paternity">Paternity</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="start_date">Start Date</Label>
+                        <Input
+                          id="start_date"
+                          type="date"
+                          value={leaveFormData.start_date}
+                          onChange={(e) => setLeaveFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="end_date">End Date</Label>
+                        <Input
+                          id="end_date"
+                          type="date"
+                          value={leaveFormData.end_date}
+                          onChange={(e) => setLeaveFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reason">Reason</Label>
+                      <Textarea
+                        id="reason"
+                        placeholder="Please provide a reason for your leave request"
+                        value={leaveFormData.reason}
+                        onChange={(e) => setLeaveFormData(prev => ({ ...prev, reason: e.target.value }))}
+                        rows={3}
+                      />
+                    </div>
+                    <Button type="submit" className="w-full" disabled={submitLeaveRequestMutation.isPending}>
+                      {submitLeaveRequestMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
