@@ -111,6 +111,8 @@ export type Database = {
           id: string
           leave_type: Database["public"]["Enums"]["leave_type"]
           reason: string | null
+          reviewed_at: string | null
+          reviewer_comments: string | null
           start_date: string
           status: Database["public"]["Enums"]["leave_status"] | null
           updated_at: string | null
@@ -124,6 +126,8 @@ export type Database = {
           id?: string
           leave_type: Database["public"]["Enums"]["leave_type"]
           reason?: string | null
+          reviewed_at?: string | null
+          reviewer_comments?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string | null
@@ -137,6 +141,8 @@ export type Database = {
           id?: string
           leave_type?: Database["public"]["Enums"]["leave_type"]
           reason?: string | null
+          reviewed_at?: string | null
+          reviewer_comments?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string | null
@@ -205,7 +211,22 @@ export type Database = {
           review_period?: string
           reviewer_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "performance_reviews_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "performance_reviews_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {

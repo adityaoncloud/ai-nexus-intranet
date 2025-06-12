@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Calendar, Clock, User, FileText, CheckCircle, XCircle, Plus, Upload, Star } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Calendar, Clock, User, FileText, CheckCircle, XCircle, Plus, Star, Award, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -127,7 +128,7 @@ const EmployeeDashboard = () => {
       setLeaveFormData({ leave_type: '', start_date: '', end_date: '', reason: '' });
       toast({
         title: "Success",
-        description: "Leave request submitted successfully and notifications sent to management!"
+        description: "Leave request submitted successfully!"
       });
     },
     onError: (error) => {
@@ -161,32 +162,13 @@ const EmployeeDashboard = () => {
     }
   });
 
-  // Update avatar mutation
-  const updateAvatarMutation = useMutation({
-    mutationFn: async (avatarUrl: string) => {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ avatar_url: avatarUrl })
-        .eq('id', user?.id);
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-      toast({
-        title: "Success",
-        description: "Profile picture updated successfully!"
-      });
-    }
-  });
-
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitLeaveRequestMutation.mutate(leaveFormData);
   };
 
   const handleAvatarChange = (newAvatarUrl: string) => {
-    updateAvatarMutation.mutate(newAvatarUrl);
+    queryClient.invalidateQueries({ queryKey: ['user-profile'] });
   };
 
   const getStatusBadge = (status: string) => {
@@ -217,222 +199,358 @@ const EmployeeDashboard = () => {
         <p className="text-muted-foreground">Welcome back, {userProfile?.full_name}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {/* Profile Summary */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <User className="h-5 w-5" />
-              <span>Profile</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <img
-                  src={userProfile?.avatar_url || '/placeholder.svg'}
-                  alt="Profile"
-                  className="w-16 h-16 rounded-full border-4 border-primary/20"
-                />
-                <div>
-                  <h3 className="font-semibold">{userProfile?.full_name}</h3>
-                  <p className="text-sm text-muted-foreground capitalize">{userProfile?.role}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p><strong>Email:</strong> {userProfile?.email}</p>
-                <p><strong>Department:</strong> {userProfile?.department || 'Not assigned'}</p>
-                <p><strong>Position:</strong> {userProfile?.position || 'Not assigned'}</p>
-                <p><strong>Join Date:</strong> {userProfile?.join_date ? new Date(userProfile.join_date).toLocaleDateString() : 'Not set'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="leaves">Leave Requests</TabsTrigger>
+          <TabsTrigger value="reviews">Performance</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+        </TabsList>
 
-        {/* Profile Picture Upload */}
-        <Card className="lg:col-span-2">
-          <ProfilePictureUpload
-            currentAvatar={userProfile?.avatar_url || '/placeholder.svg'}
-            onAvatarChange={handleAvatarChange}
-          />
-        </Card>
-      </div>
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Quick Stats */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Leaves</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{leaveRequests?.filter(req => req.status === 'pending').length || 0}</div>
+              </CardContent>
+            </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Leave Requests */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Calendar className="h-5 w-5" />
-              <span>Leave Requests</span>
-            </CardTitle>
-            <CardDescription className="flex items-center justify-between">
-              <span>Your recent leave requests</span>
-              <Dialog open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Request Leave
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Submit Leave Request</DialogTitle>
-                    <DialogDescription>
-                      Fill out the form below to request time off. Leave requests must be submitted at least 5 days in advance (except for sick leave).
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleLeaveSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="leave_type">Leave Type</Label>
-                      <Select value={leaveFormData.leave_type} onValueChange={(value) => setLeaveFormData(prev => ({ ...prev, leave_type: value }))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select leave type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="vacation">Vacation</SelectItem>
-                          <SelectItem value="sick">Sick Leave</SelectItem>
-                          <SelectItem value="personal">Personal</SelectItem>
-                          <SelectItem value="maternity">Maternity</SelectItem>
-                          <SelectItem value="paternity">Paternity</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="start_date">Start Date</Label>
-                        <Input
-                          id="start_date"
-                          type="date"
-                          value={leaveFormData.start_date}
-                          onChange={(e) => setLeaveFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                          required
-                        />
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Reviews</CardTitle>
+                <Star className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{myReviews?.length || 0}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Onboarding</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{completionRate}%</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Department</CardTitle>
+                <User className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{userProfile?.department || 'N/A'}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Leave Requests</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {leaveRequests?.slice(0, 3).map((request) => (
+                    <div key={request.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium capitalize">{request.leave_type}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
+                        </p>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="end_date">End Date</Label>
-                        <Input
-                          id="end_date"
-                          type="date"
-                          value={leaveFormData.end_date}
-                          onChange={(e) => setLeaveFormData(prev => ({ ...prev, end_date: e.target.value }))}
-                          required
-                        />
-                      </div>
+                      {getStatusBadge(request.status)}
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="reason">Reason</Label>
-                      <Textarea
-                        id="reason"
-                        placeholder="Please provide a reason for your leave request"
-                        value={leaveFormData.reason}
-                        onChange={(e) => setLeaveFormData(prev => ({ ...prev, reason: e.target.value }))}
-                        rows={3}
-                      />
-                    </div>
-                    <Button type="submit" className="w-full" disabled={submitLeaveRequestMutation.isPending}>
-                      {submitLeaveRequestMutation.isPending ? 'Submitting...' : 'Submit Request'}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {leaveRequests?.slice(0, 3).map((request) => (
-                <div key={request.id} className="border rounded p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-medium capitalize">{request.leave_type}</span>
-                    {getStatusBadge(request.status)}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
-                  </p>
-                  {request.reason && (
-                    <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
+                  ))}
+                  {!leaveRequests?.length && (
+                    <p className="text-sm text-muted-foreground">No leave requests yet</p>
                   )}
                 </div>
-              ))}
-              {!leaveRequests?.length && (
-                <p className="text-sm text-muted-foreground">No leave requests yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Performance Reviews */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Star className="h-5 w-5" />
-              <span>My Performance Reviews</span>
-            </CardTitle>
-            <CardDescription>Latest performance feedback</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {myReviews?.slice(0, 3).map((review) => (
-                <div key={review.id} className="border rounded p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-medium">Review {review.review_period}</span>
+            <Card>
+              <CardHeader>
+                <CardTitle>Latest Performance Review</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {myReviews?.[0] ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Review {myReviews[0].review_period}</span>
+                      {getRatingBadge(myReviews[0].rating)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{myReviews[0].feedback}</p>
+                    <p className="text-xs text-muted-foreground">
+                      By {myReviews[0].reviewer?.full_name || 'Unknown'} on {new Date(myReviews[0].created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No performance reviews yet</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="profile" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <User className="h-5 w-5" />
+                  <span>Profile Information</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Full Name</Label>
+                    <p className="text-sm text-muted-foreground">{userProfile?.full_name}</p>
+                  </div>
+                  <div>
+                    <Label>Email</Label>
+                    <p className="text-sm text-muted-foreground">{userProfile?.email}</p>
+                  </div>
+                  <div>
+                    <Label>Role</Label>
+                    <p className="text-sm text-muted-foreground capitalize">{userProfile?.role}</p>
+                  </div>
+                  <div>
+                    <Label>Department</Label>
+                    <p className="text-sm text-muted-foreground">{userProfile?.department || 'Not assigned'}</p>
+                  </div>
+                  <div>
+                    <Label>Position</Label>
+                    <p className="text-sm text-muted-foreground">{userProfile?.position || 'Not assigned'}</p>
+                  </div>
+                  <div>
+                    <Label>Join Date</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {userProfile?.join_date ? new Date(userProfile.join_date).toLocaleDateString() : 'Not set'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <ProfilePictureUpload
+              currentAvatar={userProfile?.avatar_url || '/placeholder.svg'}
+              onAvatarChange={handleAvatarChange}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="leaves" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Leave Requests</h2>
+            <Dialog open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Request Leave
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Submit Leave Request</DialogTitle>
+                  <DialogDescription>
+                    Fill out the form below to request time off. Leave requests must be submitted at least 5 days in advance (except for sick leave).
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleLeaveSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="leave_type">Leave Type</Label>
+                    <Select value={leaveFormData.leave_type} onValueChange={(value) => setLeaveFormData(prev => ({ ...prev, leave_type: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select leave type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="vacation">Vacation</SelectItem>
+                        <SelectItem value="sick">Sick Leave</SelectItem>
+                        <SelectItem value="personal">Personal</SelectItem>
+                        <SelectItem value="maternity">Maternity</SelectItem>
+                        <SelectItem value="paternity">Paternity</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="start_date">Start Date</Label>
+                      <Input
+                        id="start_date"
+                        type="date"
+                        value={leaveFormData.start_date}
+                        onChange={(e) => setLeaveFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="end_date">End Date</Label>
+                      <Input
+                        id="end_date"
+                        type="date"
+                        value={leaveFormData.end_date}
+                        onChange={(e) => setLeaveFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reason">Reason</Label>
+                    <Textarea
+                      id="reason"
+                      placeholder="Please provide a reason for your leave request"
+                      value={leaveFormData.reason}
+                      onChange={(e) => setLeaveFormData(prev => ({ ...prev, reason: e.target.value }))}
+                      rows={3}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={submitLeaveRequestMutation.isPending}>
+                    {submitLeaveRequestMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="grid gap-4">
+            {leaveRequests?.map((request) => (
+              <Card key={request.id}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center space-x-4">
+                        <span className="font-medium capitalize">{request.leave_type}</span>
+                        {getStatusBadge(request.status)}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium">Start Date:</span> {new Date(request.start_date).toLocaleDateString()}
+                        </div>
+                        <div>
+                          <span className="font-medium">End Date:</span> {new Date(request.end_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                      {request.reason && (
+                        <div>
+                          <span className="font-medium">Reason:</span>
+                          <p className="text-sm text-muted-foreground mt-1">{request.reason}</p>
+                        </div>
+                      )}
+                      {request.reviewer_comments && (
+                        <div>
+                          <span className="font-medium">Review Comments:</span>
+                          <p className="text-sm text-muted-foreground mt-1">{request.reviewer_comments}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {!leaveRequests?.length && (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground">No leave requests yet</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-6">
+          <h2 className="text-2xl font-bold">Performance Reviews</h2>
+          <div className="grid gap-4">
+            {myReviews?.map((review) => (
+              <Card key={review.id}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold">Review {review.review_period}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        By {review.reviewer?.full_name || 'Unknown'} on {new Date(review.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                     {getRatingBadge(review.rating)}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">{review.feedback}</p>
-                  <p className="text-xs text-muted-foreground">
-                    By {review.reviewer?.full_name || 'Unknown'} on {new Date(review.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              ))}
-              {!myReviews?.length && (
-                <p className="text-sm text-muted-foreground">No performance reviews yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Onboarding Progress */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
-              <span>Onboarding Progress</span>
-            </CardTitle>
-            <CardDescription>{completionRate}% Complete</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {allTasks?.slice(0, 4).map((task) => {
-                const isCompleted = completedTaskIds.includes(task.id);
-                return (
-                  <div key={task.id} className="flex items-center justify-between">
+                  <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      {isCompleted ? (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <div className="h-4 w-4 border border-muted-foreground rounded-full" />
-                      )}
-                      <span className={`text-sm ${isCompleted ? 'line-through text-muted-foreground' : ''}`}>
-                        {task.title}
-                      </span>
+                      <Award className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">Rating: {review.rating}/5.0</span>
                     </div>
-                    {!isCompleted && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => completeTaskMutation.mutate(task.id)}
-                        disabled={completeTaskMutation.isPending}
-                      >
-                        Complete
-                      </Button>
-                    )}
+                    <div>
+                      <span className="font-medium">Feedback:</span>
+                      <p className="text-sm text-muted-foreground mt-1">{review.feedback}</p>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                </CardContent>
+              </Card>
+            ))}
+            {!myReviews?.length && (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground">No performance reviews yet</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="onboarding" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Onboarding Progress</h2>
+            <Badge variant="secondary">{completionRate}% Complete</Badge>
+          </div>
+          <div className="grid gap-4">
+            {allTasks?.map((task) => {
+              const isCompleted = completedTaskIds.includes(task.id);
+              return (
+                <Card key={task.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4 flex-1">
+                        {isCompleted ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : (
+                          <div className="h-5 w-5 border-2 border-muted-foreground rounded-full" />
+                        )}
+                        <div className="flex-1">
+                          <h3 className={`font-medium ${isCompleted ? 'line-through text-muted-foreground' : ''}`}>
+                            {task.title}
+                          </h3>
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{task.description}</p>
+                          )}
+                          <Badge variant="outline" className="mt-2">{task.category}</Badge>
+                        </div>
+                      </div>
+                      {!isCompleted && (
+                        <Button
+                          variant="outline"
+                          onClick={() => completeTaskMutation.mutate(task.id)}
+                          disabled={completeTaskMutation.isPending}
+                        >
+                          {completeTaskMutation.isPending ? 'Completing...' : 'Mark Complete'}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

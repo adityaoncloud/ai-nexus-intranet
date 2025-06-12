@@ -72,7 +72,7 @@ const Navbar = () => {
                 <img
                   src={userProfile.avatar_url}
                   alt={userProfile.full_name}
-                  className="w-8 h-8 rounded-full"
+                  className="w-8 h-8 rounded-full object-cover border-2 border-primary/20"
                 />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">

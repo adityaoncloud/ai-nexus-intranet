@@ -1,35 +1,67 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Users, UserCheck, MessageSquare, Settings, Calendar as CalendarIcon, FileText, Newspaper, Upload, Trash2, Edit } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Users, Calendar, FileText, Star, TrendingUp, Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import HolidayManagement from './HolidayManagement';
-import NewsManager from './NewsManager';
+import LeaveApproval from './LeaveApproval';
 import ContentManagement from './ContentManagement';
+import HolidayManagement from './HolidayManagement';
 
 const AdminPanel = () => {
-  const { user } = useAuth();
+  const { userProfile } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  const [selectedEmployee, setSelectedEmployee] = useState('');
-  const [reviewText, setReviewText] = useState('');
-  const [rating, setRating] = useState('');
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+
+  // Check if user has admin access
+  if (!['admin', 'hr', 'manager', 'ceo'].includes(userProfile?.role || '')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
+            <p className="text-muted-foreground">You don't have permission to access the admin panel.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // State variables for managing employees
+  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
+  const [employeeFormData, setEmployeeFormData] = useState({
+    full_name: '',
+    email: '',
+    role: 'employee',
+    department: '',
+    position: ''
+  });
+
+  // Function to handle form input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEmployeeFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Function to handle employee form submission
+  const handleEmployeeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Implement your logic to add/edit employees here
+    console.log('Employee form submitted:', employeeFormData);
+    setIsEmployeeDialogOpen(false);
+    // Reset form data after submission
+    setEmployeeFormData({ full_name: '', email: '', role: 'employee', department: '', position: '' });
+  };
 
   // Fetch all employees
   const { data: employees } = useQuery({
@@ -38,545 +70,156 @@ const AdminPanel = () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('full_name');
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       return data;
     }
   });
 
-  // Fetch performance reviews with proper joins
-  const { data: reviews } = useQuery({
-    queryKey: ['performance-reviews'],
-    queryFn: async () => {
+  // Mutation for adding a new employee
+  const addEmployeeMutation = useMutation({
+    mutationFn: async (newEmployee: any) => {
       const { data, error } = await supabase
-        .from('performance_reviews')
-        .select(`
-          *,
-          employee:profiles!performance_reviews_employee_id_fkey(full_name),
-          reviewer:profiles!performance_reviews_reviewer_id_fkey(full_name)
-        `)
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error fetching reviews:', error);
-        return [];
-      }
-      return data || [];
-    }
-  });
-
-  // Submit review mutation
-  const submitReviewMutation = useMutation({
-    mutationFn: async (reviewData: any) => {
-      const selectedEmployeeData = employees?.find(emp => emp.full_name === selectedEmployee);
-      if (!selectedEmployeeData) throw new Error('Employee not found');
-
-      const { error } = await supabase
-        .from('performance_reviews')
-        .insert({
-          employee_id: selectedEmployeeData.id,
-          reviewer_id: user?.id,
-          rating: parseFloat(rating),
-          feedback: reviewText,
-          review_period: new Date().getFullYear().toString()
-        });
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['performance-reviews'] });
-      setSelectedEmployee('');
-      setReviewText('');
-      setRating('');
-      toast({
-        title: "Success",
-        description: "Performance review submitted successfully!"
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to submit review",
-        variant: "destructive"
-      });
-    }
-  });
-
-  // Update role and department mutation
-  const updateEmployeeMutation = useMutation({
-    mutationFn: async ({ employeeId, newRole, department }: { employeeId: string, newRole: string, department?: string }) => {
-      const updateData: any = { role: newRole as 'employee' | 'manager' | 'hr' | 'admin' | 'ceo' };
-      if (department !== undefined) {
-        updateData.department = department;
-      }
-      
-      const { error } = await supabase
         .from('profiles')
-        .update(updateData)
-        .eq('id', employeeId);
+        .insert([newEmployee]);
       
       if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast({
         title: "Success",
-        description: "Employee updated successfully!"
+        description: "Employee added successfully!"
       });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update employee",
+        description: "Failed to add employee",
         variant: "destructive"
       });
     }
   });
-
-  // Change password mutation
-  const changePasswordMutation = useMutation({
-    mutationFn: async ({ userId, newPassword }: { userId: string, newPassword: string }) => {
-      const { error } = await supabase.auth.admin.updateUserById(userId, {
-        password: newPassword
-      });
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setIsPasswordDialogOpen(false);
-      setNewPassword('');
-      setSelectedUserId('');
-      toast({
-        title: "Success",
-        description: "Password updated successfully!"
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to update password",
-        variant: "destructive"
-      });
-    }
-  });
-
-  // Delete user mutation
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const { error } = await supabase.auth.admin.deleteUser(userId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      toast({
-        title: "Success",
-        description: "User deleted successfully!"
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to delete user",
-        variant: "destructive"
-      });
-    }
-  });
-
-  const handleSubmitReview = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEmployee || !rating || !reviewText.trim()) {
-      toast({
-        title: "Error",
-        description: "Please fill in all fields",
-        variant: "destructive"
-      });
-      return;
-    }
-    submitReviewMutation.mutate({ selectedEmployee, rating, reviewText });
-  };
-
-  const handleRoleChange = (employeeId: string, newRole: string) => {
-    updateEmployeeMutation.mutate({ employeeId, newRole });
-  };
-
-  const handleDepartmentChange = (employeeId: string, department: string) => {
-    updateEmployeeMutation.mutate({ employeeId, newRole: employees?.find(e => e.id === employeeId)?.role || 'employee', department });
-  };
-
-  const handleChangePassword = () => {
-    if (!selectedUserId || !newPassword) {
-      toast({
-        title: "Error",
-        description: "Please fill in all fields",
-        variant: "destructive"
-      });
-      return;
-    }
-    changePasswordMutation.mutate({ userId: selectedUserId, newPassword });
-  };
-
-  const handleDeleteUser = (userId: string) => {
-    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      deleteUserMutation.mutate(userId);
-    }
-  };
-
-  const getRatingBadge = (rating: number) => {
-    if (rating >= 4.5) return <Badge className="bg-green-500">Excellent</Badge>;
-    if (rating >= 3.5) return <Badge variant="default">Good</Badge>;
-    if (rating >= 2.5) return <Badge variant="secondary">Satisfactory</Badge>;
-    return <Badge variant="destructive">Needs Improvement</Badge>;
-  };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Admin Panel</h1>
-          <p className="text-muted-foreground">Manage employee reviews, roles, holidays, and company content</p>
-        </div>
-
-        <Tabs defaultValue="reviews" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="reviews" className="flex items-center space-x-2">
-              <MessageSquare size={16} />
-              <span>Reviews</span>
-            </TabsTrigger>
-            <TabsTrigger value="roles" className="flex items-center space-x-2">
-              <UserCheck size={16} />
-              <span>Roles</span>
-            </TabsTrigger>
-            <TabsTrigger value="employees" className="flex items-center space-x-2">
-              <Users size={16} />
-              <span>Employees</span>
-            </TabsTrigger>
-            <TabsTrigger value="holidays" className="flex items-center space-x-2">
-              <CalendarIcon size={16} />
-              <span>Holidays</span>
-            </TabsTrigger>
-            <TabsTrigger value="content" className="flex items-center space-x-2">
-              <Newspaper size={16} />
-              <span>Content</span>
-            </TabsTrigger>
-            <TabsTrigger value="news" className="flex items-center space-x-2">
-              <FileText size={16} />
-              <span>News</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center space-x-2">
-              <Settings size={16} />
-              <span>Settings</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="reviews" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Add Employee Review</CardTitle>
-                  <CardDescription>Submit a performance review for an employee</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSubmitReview} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="employee">Select Employee</Label>
-                      <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose an employee" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {employees?.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.full_name}>
-                              {employee.full_name} - {employee.department || 'No Department'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="rating">Performance Rating (1-5)</Label>
-                      <Select value={rating} onValueChange={setRating}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select rating" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="5">5 - Excellent</SelectItem>
-                          <SelectItem value="4">4 - Good</SelectItem>
-                          <SelectItem value="3">3 - Satisfactory</SelectItem>
-                          <SelectItem value="2">2 - Needs Improvement</SelectItem>
-                          <SelectItem value="1">1 - Poor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="review">Review Comments</Label>
-                      <Textarea
-                        id="review"
-                        placeholder="Enter your review comments..."
-                        value={reviewText}
-                        onChange={(e) => setReviewText(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
-                    <Button type="submit" className="w-full" disabled={submitReviewMutation.isPending}>
-                      {submitReviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Reviews</CardTitle>
-                  <CardDescription>Latest employee performance reviews</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {reviews?.slice(0, 5).map((review) => (
-                      <div key={review.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-medium">{review.employee?.full_name || 'Unknown Employee'}</h4>
-                          {getRatingBadge(review.rating)}
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">{review.feedback}</p>
-                        <p className="text-xs text-muted-foreground">
-                          By {review.reviewer?.full_name || 'Unknown Reviewer'} on {new Date(review.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    ))}
-                    {!reviews?.length && (
-                      <p className="text-center text-muted-foreground py-4">No reviews yet</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="roles" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Employee Role & Department Management</CardTitle>
-                <CardDescription>Update employee roles, departments and access permissions</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Employee Name</TableHead>
-                      <TableHead>Current Role</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Role Actions</TableHead>
-                      <TableHead>Department Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employees?.map((employee) => (
-                      <TableRow key={employee.id}>
-                        <TableCell className="font-medium">{employee.full_name}</TableCell>
-                        <TableCell>
-                          <Badge variant={employee.role === 'employee' ? 'secondary' : 'default'}>
-                            {employee.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{employee.department || 'Not assigned'}</TableCell>
-                        <TableCell>
-                          <Select onValueChange={(value) => handleRoleChange(employee.id, value)}>
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Change role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="employee">Employee</SelectItem>
-                              <SelectItem value="manager">Manager</SelectItem>
-                              <SelectItem value="hr">HR</SelectItem>
-                              <SelectItem value="ceo">CEO</SelectItem>
-                              <SelectItem value="admin">Admin</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select onValueChange={(value) => handleDepartmentChange(employee.id, value)}>
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Change dept" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Engineering">Engineering</SelectItem>
-                              <SelectItem value="Marketing">Marketing</SelectItem>
-                              <SelectItem value="Sales">Sales</SelectItem>
-                              <SelectItem value="HR">HR</SelectItem>
-                              <SelectItem value="Finance">Finance</SelectItem>
-                              <SelectItem value="Operations">Operations</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="employees" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Employee Management</CardTitle>
-                <CardDescription>Complete list of all employees and their management options</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Join Date</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {employees?.map((employee) => (
-                      <TableRow key={employee.id}>
-                        <TableCell className="font-medium">{employee.full_name}</TableCell>
-                        <TableCell>{employee.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={employee.role === 'employee' ? 'secondary' : 'default'}>
-                            {employee.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{employee.department || 'Not assigned'}</TableCell>
-                        <TableCell>{employee.join_date ? new Date(employee.join_date).toLocaleDateString() : 'Not set'}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedUserId(employee.id);
-                                setIsPasswordDialogOpen(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteUser(employee.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Change Password</DialogTitle>
-                  <DialogDescription>
-                    Enter a new password for the selected user
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="newPassword">New Password</Label>
-                    <Input
-                      id="newPassword"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                    />
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleChangePassword} disabled={changePasswordMutation.isPending}>
-                      {changePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </TabsContent>
-
-          <TabsContent value="holidays" className="space-y-6">
-            <HolidayManagement />
-          </TabsContent>
-
-          <TabsContent value="content" className="space-y-6">
-            <ContentManagement />
-          </TabsContent>
-
-          <TabsContent value="news" className="space-y-6">
-            <NewsManager />
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>System Settings</CardTitle>
-                <CardDescription>Configure system-wide settings and integrations</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">API Integrations</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium">SERP News API</p>
-                          <p className="text-sm text-muted-foreground">Industry news fetching</p>
-                        </div>
-                        <Badge variant="outline">Not Connected</Badge>
-                      </div>
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Microsoft Graph</p>
-                          <p className="text-sm text-muted-foreground">Calendar & Email integration</p>
-                        </div>
-                        <Badge variant="outline">Not Connected</Badge>
-                      </div>
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Supabase</p>
-                          <p className="text-sm text-muted-foreground">Database and authentication</p>
-                        </div>
-                        <Badge variant="default">Connected</Badge>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">System Status</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <span>Database Connection</span>
-                        <Badge variant="default">Active</Badge>
-                      </div>
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <span>Authentication</span>
-                        <Badge variant="default">Active</Badge>
-                      </div>
-                      <div className="flex justify-between items-center p-3 border rounded-lg">
-                        <span>File Storage</span>
-                        <Badge variant="secondary">Ready</Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-foreground mb-2">Admin Panel</h1>
+        <p className="text-muted-foreground">Manage your organization</p>
       </div>
+
+      <Tabs defaultValue="employees" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-7">
+          <TabsTrigger value="employees">Employees</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="leaves">Leave Approval</TabsTrigger>
+          <TabsTrigger value="holidays">Holidays</TabsTrigger>
+          <TabsTrigger value="content">Content</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="employees" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Employee Management</h2>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>All Employees</CardTitle>
+              <CardDescription>Manage employee information and access</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Position</TableHead>
+                    <TableHead>Join Date</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {employees?.map((employee) => (
+                    <TableRow key={employee.id}>
+                      <TableCell>{employee.full_name}</TableCell>
+                      <TableCell>{employee.email}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">{employee.role}</Badge>
+                      </TableCell>
+                      <TableCell>{employee.department || 'N/A'}</TableCell>
+                      <TableCell>{employee.position || 'N/A'}</TableCell>
+                      <TableCell>
+                        {employee.join_date ? new Date(employee.join_date).toLocaleDateString() : 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button size="sm" variant="outline">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="roles" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Role Management</h2>
+          </div>
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground">Role management functionality coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Performance Reviews</h2>
+          </div>
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground">Performance review functionality coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="leaves" className="space-y-6">
+          <LeaveApproval />
+        </TabsContent>
+
+        <TabsContent value="holidays" className="space-y-6">
+          <HolidayManagement />
+        </TabsContent>
+
+        <TabsContent value="content" className="space-y-6">
+          <ContentManagement />
+        </TabsContent>
+
+        <TabsContent value="onboarding" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Onboarding Management</h2>
+          </div>
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground">Onboarding management functionality coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
