@@ -8,8 +8,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
+  signInWithMicrosoft: () => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userProfile: any;
 }
@@ -27,10 +26,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log('Auth state changed:', event, session);
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // Check if email is from techcorp.com domain
+          const email = session.user.email;
+          if (email && !email.endsWith('@techcorp.com')) {
+            toast({
+              title: "Access Denied",
+              description: "Only TechCorp email addresses are allowed",
+              variant: "destructive"
+            });
+            supabase.auth.signOut();
+            return;
+          }
+          
           // Fetch user profile
           setTimeout(() => {
             fetchUserProfile(session.user.id);
@@ -49,6 +61,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        // Check if email is from techcorp.com domain
+        const email = session.user.email;
+        if (email && !email.endsWith('@techcorp.com')) {
+          toast({
+            title: "Access Denied",
+            description: "Only TechCorp email addresses are allowed",
+            variant: "destructive"
+          });
+          supabase.auth.signOut();
+          return;
+        }
+        
         fetchUserProfile(session.user.id);
       }
       
@@ -56,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [toast]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -77,33 +101,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (error) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-    
-    return { error };
-  };
-
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
+  const signInWithMicrosoft = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
       options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName
+        redirectTo: `${window.location.origin}/`,
+        queryParams: {
+          prompt: 'select_account',
         }
       }
     });
@@ -113,11 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         title: "Error",
         description: error.message,
         variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Success",
-        description: "Please check your email to confirm your account",
       });
     }
     
@@ -133,8 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     session,
     loading,
-    signIn,
-    signUp,
+    signInWithMicrosoft,
     signOut,
     userProfile
   };
