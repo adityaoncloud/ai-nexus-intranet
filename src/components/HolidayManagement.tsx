@@ -1,5 +1,7 @@
 
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,52 +13,73 @@ import { Calendar } from '@/components/ui/calendar';
 import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
 
 const HolidayManagement = () => {
+  const queryClient = useQueryClient();
   const [holidayName, setHolidayName] = useState('');
   const [holidayDate, setHolidayDate] = useState<Date>();
   const [holidayType, setHolidayType] = useState('');
   const [holidayDescription, setHolidayDescription] = useState('');
 
   // Mock holidays data - replace with API call
-  const [holidays, setHolidays] = useState([
-    { id: 1, name: 'New Year', date: '2024-01-01', type: 'National Holiday', description: 'New Year celebration' },
-    { id: 2, name: 'Independence Day', date: '2024-07-04', type: 'National Holiday', description: 'National Independence Day' },
-    { id: 3, name: 'Company Anniversary', date: '2024-09-15', type: 'Company Holiday', description: 'Annual company celebration' },
-    { id: 4, name: 'Christmas', date: '2024-12-25', type: 'National Holiday', description: 'Christmas celebration' }
-  ]);
+  const { data: holidays = [], isLoading } = useQuery({
+    queryKey: ['holidays-admin'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('holidays')
+        .select('*')
+        .order('date', { ascending: true });
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const addHolidayMutation = useMutation({
+    mutationFn: async (newHoliday: any) => {
+      const { error } = await supabase
+        .from('holidays')
+        .insert({
+          name: newHoliday.name,
+          date: newHoliday.date,
+          description: newHoliday.description,
+          is_company_wide: true, // or set based on your UI
+          // created_by: user?.id, // If you have user context, add this
+        });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['holidays-admin'] });
+      setHolidayName('');
+      setHolidayDate(undefined);
+      setHolidayType('');
+      setHolidayDescription('');
+    }
+  });
+
+const deleteHolidayMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('holidays')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['holidays-admin'] });
+    }
+  });
 
   const handleAddHoliday = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!holidayName || !holidayDate || !holidayType) return;
-
-    const newHoliday = {
-      id: Date.now(),
+    if (!holidayName || !holidayDate) return;
+    addHolidayMutation.mutate({
       name: holidayName,
       date: holidayDate.toISOString().split('T')[0],
-      type: holidayType,
-      description: holidayDescription
-    };
-
-    // TODO: Replace with API call
-    // await addHoliday(newHoliday);
-    
-    setHolidays(prev => [...prev, newHoliday]);
-    
-    // Reset form
-    setHolidayName('');
-    setHolidayDate(undefined);
-    setHolidayType('');
-    setHolidayDescription('');
-    
-    console.log('Holiday added:', newHoliday);
+      description: holidayDescription,
+      // type: holidayType, // If you want to store type, add a column in DB
+    });
   };
 
-  const handleDeleteHoliday = (id: number) => {
-    // TODO: Replace with API call
-    // await deleteHoliday(id);
-    
-    setHolidays(prev => prev.filter(holiday => holiday.id !== id));
-    console.log('Holiday deleted:', id);
+  const handleDeleteHoliday = (id: string) => {
+    deleteHolidayMutation.mutate(id);
   };
 
   const getTypeColor = (type: string) => {

@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import HolidayManagement from './HolidayManagement';
 import NewsManager from './NewsManager';
 import ContentManagement from './ContentManagement';
+import LeaveApproval from './LeaveApproval';
 
 const AdminPanel = () => {
   const { user } = useAuth();
@@ -255,13 +256,12 @@ const AdminPanel = () => {
               <CalendarIcon size={16} />
               <span>Holidays</span>
             </TabsTrigger>
+            <TabsTrigger value="leaves" className="flex items-center space-x-2">
+              Leave Approval
+            </TabsTrigger>
             <TabsTrigger value="content" className="flex items-center space-x-2">
               <Newspaper size={16} />
               <span>Content</span>
-            </TabsTrigger>
-            <TabsTrigger value="news" className="flex items-center space-x-2">
-              <FileText size={16} />
-              <span>News</span>
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center space-x-2">
               <Settings size={16} />
@@ -352,7 +352,9 @@ const AdminPanel = () => {
               </Card>
             </div>
           </TabsContent>
-
+              <TabsContent value="leaves" className="space-y-6">
+                  <LeaveApproval />
+          </TabsContent>
           <TabsContent value="roles" className="space-y-6">
             <Card>
               <CardHeader>

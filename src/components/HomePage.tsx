@@ -92,7 +92,7 @@ const HomePage = () => {
     },
     {
       title: 'Calendar',
-      description: 'Check your schedule',
+      description: 'Check your upcoming events',
       icon: Calendar,
       href: '/calendar',
       color: 'bg-green-500'
@@ -126,7 +126,7 @@ const HomePage = () => {
             Welcome back, {userProfile?.full_name}! 👋
           </h1>
           <p className="text-muted-foreground">
-            Here's what's happening at TechCorp today.
+            Here's what's happening at AtriSystems today.
           </p>
         </div>
 

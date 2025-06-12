@@ -115,6 +115,8 @@ export type Database = {
           status: Database["public"]["Enums"]["leave_status"] | null
           updated_at: string | null
           user_id: string
+          reviewer_comments?: string;
+          reviewed_at: string 
         }
         Insert: {
           approved_at?: string | null
@@ -128,6 +130,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string | null
           user_id: string
+          reviewed_at: string 
         }
         Update: {
           approved_at?: string | null
@@ -141,6 +144,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string | null
           user_id?: string
+          reviewed_at: string 
         }
         Relationships: []
       }

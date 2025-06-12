@@ -36,10 +36,14 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo and Company Name */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">TC</span>
-            </div>
-            <span className="text-xl font-bold text-foreground">TechCorp</span>
+            <img
+              src="/ATRI System Logo.svg"
+              alt="ATRI System Logo"
+              className="w-15 h-12"
+              style={{ objectFit: 'contain' }}
+            />
+          {/* Optionally, add a company name next to the logo */}
+          {/* <span className="text-xl font-bold text-foreground">ATRI System</span> */}
           </div>
 
           {/* Navigation Links */}

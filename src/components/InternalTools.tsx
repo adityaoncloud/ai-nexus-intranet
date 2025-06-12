@@ -10,9 +10,9 @@ const InternalTools = () => {
   const tools = [
     {
       id: 1,
-      name: 'AI Model Training Platform',
-      description: 'Internal platform for training and deploying custom AI models',
-      url: '#',
+      name: 'Sahai Engineer',
+      description: 'Internal tool for writing code',
+      url: 'sahaiengineer.avaulti.net',
       category: 'AI Development',
       status: 'Active',
       icon: Code,
@@ -50,36 +50,6 @@ const InternalTools = () => {
     },
     {
       id: 5,
-      name: 'Employee Directory & Skills',
-      description: 'Internal directory with employee skills and expertise mapping',
-      url: '#',
-      category: 'HR',
-      status: 'Active',
-      icon: Users,
-      access: 'All Employees'
-    },
-    {
-      id: 6,
-      name: 'Meeting Room Booking',
-      description: 'Book conference rooms and manage office spaces',
-      url: '#',
-      category: 'Office Management',
-      status: 'Active',
-      icon: Calendar,
-      access: 'All Employees'
-    },
-    {
-      id: 7,
-      name: 'API Testing Suite',
-      description: 'Internal tool for testing and monitoring our AI APIs',
-      url: '#',
-      category: 'Development',
-      status: 'Beta',
-      icon: Settings,
-      access: 'Engineers, QA'
-    },
-    {
-      id: 8,
       name: 'Client Project Tracker',
       description: 'Track progress on client AI implementation projects',
       url: '#',
@@ -90,7 +60,7 @@ const InternalTools = () => {
     }
   ];
 
-  const categories = ['All', 'AI Development', 'Analytics', 'Documentation', 'Infrastructure', 'HR', 'Office Management', 'Development', 'Project Management'];
+  const categories = ['All', 'AI Development', 'Analytics', 'Documentation', 'Infrastructure', 'Project Management'];
   const [selectedCategory, setSelectedCategory] = React.useState('All');
 
   const filteredTools = selectedCategory === 'All' 
