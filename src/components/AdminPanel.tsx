@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,26 +24,12 @@ const AdminPanel = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Check if user has admin access
-  if (!['admin', 'hr', 'manager', 'ceo'].includes(userProfile?.role || '')) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
-            <p className="text-muted-foreground">You don't have permission to access the admin panel.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   // State variables for managing employees
   const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
   const [employeeFormData, setEmployeeFormData] = useState({
     full_name: '',
     email: '',
-    role: 'employee',
+    role: 'employee' as const,
     department: '',
     position: ''
   });
@@ -56,10 +43,8 @@ const AdminPanel = () => {
   // Function to handle employee form submission
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Implement your logic to add/edit employees here
     console.log('Employee form submitted:', employeeFormData);
     setIsEmployeeDialogOpen(false);
-    // Reset form data after submission
     setEmployeeFormData({ full_name: '', email: '', role: 'employee', department: '', position: '' });
   };
 
@@ -102,6 +87,20 @@ const AdminPanel = () => {
       });
     }
   });
+
+  // Check if user has admin access AFTER all hooks are called
+  if (!['admin', 'hr', 'manager', 'ceo'].includes(userProfile?.role || '')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <h2 className="text-2xl font-bold mb-4">Access Denied</h2>
+            <p className="text-muted-foreground">You don't have permission to access the admin panel.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

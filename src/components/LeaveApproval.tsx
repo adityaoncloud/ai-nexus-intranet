@@ -12,6 +12,28 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
+type LeaveStatus = 'pending' | 'approved' | 'rejected';
+
+interface LeaveRequestWithProfile {
+  id: string;
+  user_id: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: LeaveStatus;
+  created_at: string;
+  reviewer_comments: string | null;
+  reviewed_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  profiles: {
+    full_name: string;
+    email: string;
+    department: string | null;
+  } | null;
+}
+
 const LeaveApproval = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -20,7 +42,7 @@ const LeaveApproval = () => {
   const [reviewComments, setReviewComments] = useState('');
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
 
-  // Fetch all pending leave requests
+  // Fetch all leave requests with profile information
   const { data: leaveRequests, isLoading } = useQuery({
     queryKey: ['all-leave-requests'],
     queryFn: async () => {
@@ -28,18 +50,22 @@ const LeaveApproval = () => {
         .from('leave_requests')
         .select(`
           *,
-          profiles!leave_requests_user_id_fkey(full_name, email, department)
+          profiles (
+            full_name,
+            email,
+            department
+          )
         `)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data;
+      return data as LeaveRequestWithProfile[];
     }
   });
 
   // Approve/Reject leave request mutation
   const reviewLeaveRequestMutation = useMutation({
-    mutationFn: async ({ requestId, status, comments }: { requestId: string; status: string; comments: string }) => {
+    mutationFn: async ({ requestId, status, comments }: { requestId: string; status: LeaveStatus; comments: string }) => {
       const { error } = await supabase
         .from('leave_requests')
         .update({
@@ -72,7 +98,7 @@ const LeaveApproval = () => {
     }
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: LeaveStatus) => {
     switch (status) {
       case 'approved':
         return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Approved</Badge>;
@@ -83,7 +109,7 @@ const LeaveApproval = () => {
     }
   };
 
-  const handleReview = (request: any, status: string) => {
+  const handleReview = (request: LeaveRequestWithProfile, status: LeaveStatus) => {
     setSelectedRequest({ ...request, reviewStatus: status });
     setIsReviewDialogOpen(true);
   };
@@ -118,7 +144,7 @@ const LeaveApproval = () => {
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
                       <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{request.profiles?.full_name}</span>
+                      <span className="font-medium">{request.profiles?.full_name || 'Unknown User'}</span>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -129,13 +155,13 @@ const LeaveApproval = () => {
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
-                      <span className="font-medium">Employee:</span> {request.profiles?.full_name}
+                      <span className="font-medium">Employee:</span> {request.profiles?.full_name || 'Unknown User'}
                     </div>
                     <div>
                       <span className="font-medium">Department:</span> {request.profiles?.department || 'N/A'}
                     </div>
                     <div>
-                      <span className="font-medium">Email:</span> {request.profiles?.email}
+                      <span className="font-medium">Email:</span> {request.profiles?.email || 'N/A'}
                     </div>
                   </div>
 
